@@ -61,6 +61,26 @@ async function getChain(ulpin) {
   return BlockchainNode.find({ ulpin }).sort({ timestamp: 1 });
 }
 
+async function createSplitGenesisNode(childUlpin, ownerUserId, parentUlpin, parentNodeId) {
+  const nodeId = `NODE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+  const timestamp = new Date();
+  const poid = `SPLIT_FROM_${parentUlpin}`;
+
+  const node = new BlockchainNode({
+    nodeId,
+    ulpin: childUlpin,
+    POID: poid,
+    COID: ownerUserId,
+    previousNodeId: parentNodeId,
+    timestamp,
+    splitParentNodeId: parentNodeId,
+    blockHash: generateHash(nodeId, childUlpin, poid, ownerUserId, parentNodeId, timestamp),
+  });
+
+  await node.save();
+  return node;
+}
+
 async function verifyChain(ulpin) {
   const chain = await getChain(ulpin);
 
@@ -80,6 +100,12 @@ async function verifyChain(ulpin) {
     }
 
     if (index === 0) {
+      if (node.previousNodeId) {
+        const parentNode = await BlockchainNode.findOne({ nodeId: node.previousNodeId });
+        if (!parentNode) {
+          return { valid: false, invalidAt: node.nodeId };
+        }
+      }
       continue;
     }
 
@@ -97,6 +123,7 @@ module.exports = {
   generateHash,
   createGenesisNode,
   createTransferNode,
+  createSplitGenesisNode,
   getChain,
   verifyChain,
 };

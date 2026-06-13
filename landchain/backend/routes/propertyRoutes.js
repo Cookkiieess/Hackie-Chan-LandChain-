@@ -2,13 +2,16 @@ const express = require("express");
 const Property = require("../models/Property");
 const User = require("../models/User");
 const Transfer = require("../models/Transfer");
-const { createGenesisNode, getChain } = require("../services/blockchainService");
+const Notification = require("../models/Notification");
+const BlockchainNode = require("../models/BlockchainNode");
+const { createGenesisNode, getChain, createSplitGenesisNode } = require("../services/blockchainService");
 const { analyzeProperty } = require("../services/geminiService");
 
 const router = express.Router();
 
 function getRevenueDept(ulpin) {
-  return {
+  const normalizedUlpin = String(ulpin || "").toUpperCase().trim();
+  const data = {
     ownerName: "Ramesh Kumar",
     surveyNumber: "142/3B",
     area: "2.4 acres",
@@ -19,8 +22,68 @@ function getRevenueDept(ulpin) {
     state: "Karnataka",
     previousOwners: ["Suresh Kumar (1998-2015)", "Ramesh Kumar (2015-present)"],
     taxStatus: "Paid up to 2024-25",
-    ulpin,
+    ulpin: normalizedUlpin,
   };
+
+  if (normalizedUlpin.startsWith("KA-MNG-21")) {
+    data.ownerName = "Suresh Patil";
+    data.previousOwners = ["Ramesh Kumar (2010-2020)", "Suresh Patil (2020-present)"];
+  } else if (normalizedUlpin.startsWith("KA-MNG-31")) {
+    data.ownerName = "Deepak Gowda";
+    data.previousOwners = ["Suresh Patil (2012-2022)", "Deepak Gowda (2022-present)"];
+  }
+
+  if (normalizedUlpin === "KA-MNG-142-3B") {
+    data.divisions = [
+      { ulpin: `${normalizedUlpin}/A`, area: "1.2 acres" },
+      { ulpin: `${normalizedUlpin}/B`, area: "1.2 acres" },
+    ];
+  } else if (normalizedUlpin === "KA-MNG-111-DIV1") {
+    data.area = "2.0 acres";
+    data.divisions = [
+      { ulpin: `${normalizedUlpin}/A`, area: "1.0 acres" },
+      { ulpin: `${normalizedUlpin}/B`, area: "1.0 acres" },
+    ];
+  } else if (normalizedUlpin === "KA-MNG-112-DIV2") {
+    data.area = "3.0 acres";
+    data.divisions = [
+      { ulpin: `${normalizedUlpin}/A`, area: "1.5 acres" },
+      { ulpin: `${normalizedUlpin}/B`, area: "1.5 acres" },
+    ];
+  } else if (normalizedUlpin === "KA-MNG-211-DIV1") {
+    data.area = "4.0 acres";
+    data.divisions = [
+      { ulpin: `${normalizedUlpin}/A`, area: "2.0 acres" },
+      { ulpin: `${normalizedUlpin}/B`, area: "2.0 acres" },
+    ];
+  } else if (normalizedUlpin === "KA-MNG-212-DIV2") {
+    data.area = "2.4 acres";
+    data.divisions = [
+      { ulpin: `${normalizedUlpin}/A`, area: "1.2 acres" },
+      { ulpin: `${normalizedUlpin}/B`, area: "1.2 acres" },
+    ];
+  } else if (normalizedUlpin === "KA-MNG-311-DIV1") {
+    data.area = "1.6 acres";
+    data.divisions = [
+      { ulpin: `${normalizedUlpin}/A`, area: "0.8 acres" },
+      { ulpin: `${normalizedUlpin}/B`, area: "0.8 acres" },
+    ];
+  } else if (normalizedUlpin === "KA-MNG-312-DIV2") {
+    data.area = "5.0 acres";
+    data.divisions = [
+      { ulpin: `${normalizedUlpin}/A`, area: "2.5 acres" },
+      { ulpin: `${normalizedUlpin}/B`, area: "2.5 acres" },
+    ];
+  } else if (normalizedUlpin === "KA-MNG-313-DIV3") {
+    data.area = "3.0 acres";
+    data.divisions = [
+      { ulpin: `${normalizedUlpin}/A`, area: "1.0 acres" },
+      { ulpin: `${normalizedUlpin}/B`, area: "1.0 acres" },
+      { ulpin: `${normalizedUlpin}/C`, area: "1.0 acres" },
+    ];
+  }
+
+  return data;
 }
 
 function getKaveriData() {
@@ -235,6 +298,127 @@ router.put("/:ulpin/tax/pay", async (req, res) => {
     return res.json(property);
   } catch (error) {
     return res.status(500).json({ error: "Failed to record tax payment" });
+  }
+});
+
+router.post("/split-request", async (req, res) => {
+  try {
+    const { parentUlpin, splits } = req.body;
+
+    const parentProperty = await Property.findOne({ ulpin: parentUlpin });
+    if (!parentProperty) {
+      return res.status(404).json({ error: "Parent property not found" });
+    }
+
+    const officialData = getRevenueDept(parentUlpin);
+    if (!officialData.divisions || officialData.divisions.length < 2) {
+      return res.status(400).json({ error: "This property does not have approved divisions in the government registry." });
+    }
+
+    // Create a "Survey Initiated" notification immediately
+    await Notification.create({
+      userId: parentProperty.ownerUserId,
+      type: "STATUS_UPDATE",
+      title: "Property Survey Initiated",
+      message: `A government survey has been initiated for ULPIN ${parentUlpin} to split it into ${splits.length} parcels.`,
+    });
+
+    // Simulate government survey and database update in background (5 seconds delay)
+    setTimeout(async () => {
+      try {
+        const prop = await Property.findOne({ ulpin: parentUlpin });
+        if (!prop || prop.isDivided) return;
+
+        prop.isDivided = true;
+        prop.dividedChildUlpins = splits.map((s) => s.ulpin);
+        await prop.save();
+
+        const latestParentBlock = await BlockchainNode.findOne({ ulpin: parentUlpin }).sort({ timestamp: -1 });
+        const parentNodeId = latestParentBlock ? latestParentBlock.nodeId : null;
+
+        for (const child of splits) {
+          // Create child property
+          await Property.create({
+            ulpin: child.ulpin,
+            ownerUserId: prop.ownerUserId,
+            area: child.area,
+            type: prop.type,
+            location: prop.location,
+            village: prop.village,
+            taluk: prop.taluk,
+            district: prop.district,
+            parentUlpin: parentUlpin,
+            targetBuyerUserId: child.targetBuyerUserId,
+            targetSalePrice: child.targetSalePrice,
+            taxRecords: [], // child properties start with paid tax status internally
+          });
+
+          // Create split genesis node in blockchain
+          await createSplitGenesisNode(child.ulpin, prop.ownerUserId, parentUlpin, parentNodeId);
+
+          // Get seller and buyer names
+          const sellerUser = await User.findOne({ userId: prop.ownerUserId });
+          const buyerUser = await User.findOne({ userId: child.targetBuyerUserId });
+
+          // Automatically create the Transfer agreement in SENT state (pre-signed by seller)
+          const transfer = await Transfer.create({
+            sellerUserId: prop.ownerUserId,
+            sellerName: sellerUser ? sellerUser.name : prop.ownerUserId,
+            ulpin: child.ulpin,
+            agreementConditions: `Split transfer child parcel. Parent ULPIN: ${parentUlpin}.`,
+            price: Number(child.targetSalePrice),
+            buyerUserId: child.targetBuyerUserId,
+            buyerName: buyerUser ? buyerUser.name : child.targetBuyerUserId,
+            geminiSummary: {
+              summary: `This is a child parcel split from ${parentUlpin}.`,
+              landDetails: {
+                area: child.area,
+                type: prop.type,
+                location: prop.location,
+                surveyNumber: child.ulpin,
+              },
+              riskLevel: "LOW",
+              taxStatus: "Paid",
+              flags: []
+            },
+            flags: [],
+            status: "SENT",
+            sellerSignature: {
+              signed: true,
+              timestamp: new Date(),
+            },
+            buyerSignature: {
+              signed: false,
+              timestamp: null,
+            }
+          });
+
+          // Notify the buyer
+          await Notification.create({
+            userId: child.targetBuyerUserId,
+            type: "DEED_RECEIVED",
+            title: "New Property Offer (Split)",
+            message: `New split property offer for ULPIN ${child.ulpin} from ${prop.ownerUserId}`,
+            transferId: transfer.transferId,
+          });
+        }
+
+        // Send completion notification to seller
+        await Notification.create({
+          userId: prop.ownerUserId,
+          type: "STATUS_UPDATE",
+          title: "Land Division Completed",
+          message: `ULPIN ${parentUlpin} has been successfully divided into: ${splits.map((s) => s.ulpin).join(", ")}.`,
+        });
+      } catch (err) {
+        console.error("Async property split error:", err);
+      }
+    }, 5000);
+
+    return res.json({ status: "success", message: "Government survey initiated." });
+  } catch (error) {
+    console.error("Split request error:", error);
+    return res.status(500).json({ error: "Failed to initiate property split" });
   }
 });
 

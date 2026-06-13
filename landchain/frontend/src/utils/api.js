@@ -24,6 +24,8 @@ export const analyzeProperty = (ulpin, combinedData) =>
 export const getUserProperties = (userId) => api.get(`/property/user/${userId}`);
 export const getPropertyByUlpin = (ulpin) => api.get(`/property/${ulpin}`);
 export const payPropertyTax = (ulpin, year) => api.put(`/property/${ulpin}/tax/pay`, { year });
+export const splitProperty = (parentUlpin, splits) =>
+  api.post("/property/split-request", { parentUlpin, splits });
 
 export const initiateTransfer = (data) => api.post("/transfer/initiate", data);
 export const sellerSign = (transferId) => api.post("/transfer/seller-sign", { transferId });

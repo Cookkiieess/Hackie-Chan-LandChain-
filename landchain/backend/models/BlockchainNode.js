@@ -43,9 +43,18 @@ const blockchainNodeSchema = new mongoose.Schema({
     type: String,
     trim: true,
   },
+  splitParentNodeId: {
+    type: String,
+    default: null,
+    trim: true,
+  },
 });
 
 blockchainNodeSchema.pre("save", function prepareBlockchainNode(next) {
+  if (this.ulpin) {
+    this.ulpin = this.ulpin.toUpperCase().trim();
+  }
+
   if (!this.nodeId) {
     this.nodeId = createNodeId();
   }
