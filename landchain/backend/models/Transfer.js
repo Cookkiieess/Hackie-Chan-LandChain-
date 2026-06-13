@@ -49,9 +49,19 @@ const transferSchema = new mongoose.Schema({
     required: true,
     trim: true,
   },
+  sellerName: {
+    type: String,
+    default: "",
+    trim: true,
+  },
   buyerUserId: {
     type: String,
     required: true,
+    trim: true,
+  },
+  buyerName: {
+    type: String,
+    default: "",
     trim: true,
   },
   price: {

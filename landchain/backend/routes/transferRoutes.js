@@ -2,6 +2,7 @@ const express = require("express");
 const Notification = require("../models/Notification");
 const Property = require("../models/Property");
 const Transfer = require("../models/Transfer");
+const User = require("../models/User");
 const {
   createGenesisNode,
   createTransferNode,
@@ -72,12 +73,21 @@ router.post("/initiate", async (req, res) => {
       });
     }
 
+    const sellerUser = await User.findOne({ userId: sellerUserId });
+    const buyerUser = await User.findOne({ userId: buyerUserId });
+
+    if (!buyerUser) {
+      return res.status(404).json({ error: "Buyer User ID not found." });
+    }
+
     const transfer = await Transfer.create({
       sellerUserId,
+      sellerName: sellerUser ? sellerUser.name : sellerUserId,
       ulpin,
       agreementConditions,
       price,
       buyerUserId,
+      buyerName: buyerUser ? buyerUser.name : buyerUserId,
       geminiSummary,
       flags,
       status: "DRAFT",

@@ -19,6 +19,7 @@ import {
   initiateTransfer,
   sellerSign,
 } from "../../utils/api";
+import { generateSaleDeed } from "../../utils/generateDeed";
 import ProgressTracker from "../shared/ProgressTracker";
 
 const STEP = {
@@ -134,6 +135,7 @@ export default function Transfer({ userId }) {
   const [transfers, setTransfers] = useState([]);
   const [pendingPaymentId, setPendingPaymentId] = useState("");
   const [paymentRefs, setPaymentRefs] = useState({});
+  const [recentSignedTransfer, setRecentSignedTransfer] = useState(null);
 
   const visibleTransfers = useMemo(
     () =>
@@ -210,6 +212,26 @@ export default function Transfer({ userId }) {
         flags: geminiSummary?.flags || [],
       });
       await sellerSign(initiated.transferId);
+      setRecentSignedTransfer({
+        transferId: initiated.transferId,
+        status: "SENT",
+        ulpin: combinedData.ulpin,
+        sellerUserId: userId,
+        buyerUserId,
+        price: Number(price),
+        agreementConditions,
+        geminiSummary,
+        flags: geminiSummary?.flags || [],
+        sellerSignature: {
+          signed: true,
+          timestamp: new Date().toISOString(),
+        },
+        buyerSignature: {
+          signed: false,
+          timestamp: null,
+        },
+        createdAt: new Date().toISOString(),
+      });
       toast.success("Agreement sent! Waiting for buyer's response.");
       setStep(STEP.SENT);
       await loadTransfers();
@@ -251,6 +273,68 @@ export default function Transfer({ userId }) {
     { icon: FileText, label: "Sub-Registrar Office (Kaveri 2.0)" },
     { icon: Scale, label: "District Court Records" },
   ];
+
+  const handleDownloadSellerCopy = async () => {
+    if (!recentSignedTransfer) {
+      return;
+    }
+
+    await generateSaleDeed(recentSignedTransfer, {
+      seller: {
+        name: sessionStorage.getItem("name") || recentSignedTransfer.sellerName || recentSignedTransfer.sellerUserId,
+        userId,
+        timestamp: recentSignedTransfer.sellerSignature?.timestamp,
+        signed: true,
+      },
+      buyer: {
+        name: recentSignedTransfer.buyerName || recentSignedTransfer.buyerUserId,
+        userId: recentSignedTransfer.buyerUserId,
+        timestamp: null,
+        signed: false,
+      },
+      registrar: {
+        name: "Registrar Officer",
+        timestamp: null,
+        signed: false,
+      },
+      panchayat: {
+        name: "Panchayat Officer",
+        timestamp: null,
+        signed: false,
+      },
+    });
+
+    toast.success("Sale Deed downloaded successfully");
+  };
+
+  const handleDownloadFinalDeed = async (transfer) => {
+    await generateSaleDeed(transfer, {
+      seller: {
+        name: transfer.sellerName || transfer.sellerUserId,
+        userId: transfer.sellerUserId,
+        timestamp: transfer.sellerSignature?.timestamp,
+        signed: true,
+      },
+      buyer: {
+        name: transfer.buyerName || transfer.buyerUserId,
+        userId: transfer.buyerUserId,
+        timestamp: transfer.buyerSignature?.timestamp,
+        signed: true,
+      },
+      registrar: {
+        name: "Registrar Officer",
+        timestamp: transfer.registrarAction?.timestamp,
+        signed: true,
+      },
+      panchayat: {
+        name: "Panchayat Officer",
+        timestamp: transfer.panchayatAction?.timestamp,
+        signed: true,
+      },
+    });
+
+    toast.success("Final Sale Deed downloaded successfully");
+  };
 
   return (
     <section className="space-y-8">
@@ -542,6 +626,15 @@ export default function Transfer({ userId }) {
               Agreement Sent Successfully
             </h1>
             <p className="mt-3 max-w-md text-sm text-slate-500">Track progress below.</p>
+            {recentSignedTransfer ? (
+              <button
+                type="button"
+                onClick={handleDownloadSellerCopy}
+                className="mt-6 rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-800"
+              >
+                Download My Copy
+              </button>
+            ) : null}
           </div>
         ) : null}
       </div>
@@ -577,6 +670,23 @@ export default function Transfer({ userId }) {
                 {transfer.status === "PAYMENT_PENDING" && transfer.sellerUserId === userId ? (
                   <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
                     Waiting for the buyer to complete the payment step.
+                  </div>
+                ) : null}
+                {transfer.status === "COMPLETED" ? (
+                  <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-5 flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-emerald-800">Transfer Completed Successfully</p>
+                      <p className="text-sm text-emerald-700">
+                        The ownership has been successfully updated on the blockchain.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadFinalDeed(transfer)}
+                      className="rounded-2xl bg-emerald-600 px-5 py-3 font-semibold text-white transition hover:bg-emerald-700"
+                    >
+                      Download Final Sale Deed
+                    </button>
                   </div>
                 ) : null}
               </div>
