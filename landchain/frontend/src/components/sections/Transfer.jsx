@@ -64,7 +64,9 @@ function PaymentCard({ transfer, onConfirm, pendingPaymentId, paymentRefs, setPa
       <div className="flex flex-wrap items-start justify-between gap-4">
         <div>
           <p className="text-lg font-semibold text-slate-900">UPI Payment</p>
-          <p className="text-sm text-slate-500">Complete the final transfer payment to close the chain.</p>
+          <p className="text-sm text-slate-500">
+            Buyer must complete the final transfer payment to close the chain.
+          </p>
         </div>
         <div className="rounded-full bg-amber-50 px-3 py-1 text-sm font-semibold text-amber-700">
           Pending Payment
@@ -133,8 +135,11 @@ export default function Transfer({ userId }) {
   const [pendingPaymentId, setPendingPaymentId] = useState("");
   const [paymentRefs, setPaymentRefs] = useState({});
 
-  const sellerTransfers = useMemo(
-    () => transfers.filter((transfer) => transfer.sellerUserId === userId),
+  const visibleTransfers = useMemo(
+    () =>
+      transfers.filter(
+        (transfer) => transfer.sellerUserId === userId || transfer.buyerUserId === userId
+      ),
     [transfers, userId]
   );
 
@@ -167,7 +172,7 @@ export default function Transfer({ userId }) {
     });
 
     try {
-      const { data: fetched } = await fetchProperty(ulpin.trim());
+      const { data: fetched } = await fetchProperty(ulpin.trim(), userId);
       const analyzePayload = {
         revenue: fetched.revenueData,
         kaveri: fetched.kaveriData,
@@ -226,7 +231,11 @@ export default function Transfer({ userId }) {
     setPendingPaymentId(transfer.transferId);
     try {
       await confirmPayment(transfer.transferId, paymentRef);
-      toast.success("Payment confirmed! Blockchain updated.");
+      toast.success("Payment confirmed! Transfer completed and ownership updated.");
+      setPaymentRefs((current) => ({
+        ...current,
+        [transfer.transferId]: "",
+      }));
       await loadTransfers();
     } catch (error) {
       toast.error("Failed to confirm payment");
@@ -540,21 +549,23 @@ export default function Transfer({ userId }) {
       <div className="space-y-5">
         <div className="flex items-center justify-between">
           <div>
-            <h2 className="text-2xl font-semibold text-slate-900">Active Transfers</h2>
-            <p className="text-sm text-slate-500">Monitor every seller-side transfer from one place.</p>
+            <h2 className="text-2xl font-semibold text-slate-900">Your Transfers</h2>
+            <p className="text-sm text-slate-500">
+              Monitor transfers where you are the seller or the buyer.
+            </p>
           </div>
         </div>
 
-        {sellerTransfers.length === 0 ? (
+        {visibleTransfers.length === 0 ? (
           <div className="rounded-[28px] border border-dashed border-slate-300 bg-white px-6 py-10 text-center text-slate-500">
-            No active seller transfers yet.
+            No transfers available yet.
           </div>
         ) : (
           <div className="space-y-5">
-            {sellerTransfers.map((transfer) => (
+            {visibleTransfers.map((transfer) => (
               <div key={transfer.transferId} className="space-y-5">
                 <ProgressTracker transfer={transfer} />
-                {transfer.status === "PAYMENT_PENDING" ? (
+                {transfer.status === "PAYMENT_PENDING" && transfer.buyerUserId === userId ? (
                   <PaymentCard
                     transfer={transfer}
                     onConfirm={handleConfirmPayment}
@@ -562,6 +573,11 @@ export default function Transfer({ userId }) {
                     paymentRefs={paymentRefs}
                     setPaymentRefs={setPaymentRefs}
                   />
+                ) : null}
+                {transfer.status === "PAYMENT_PENDING" && transfer.sellerUserId === userId ? (
+                  <div className="rounded-[24px] border border-slate-200 bg-slate-50 p-5 text-sm text-slate-600">
+                    Waiting for the buyer to complete the payment step.
+                  </div>
                 ) : null}
               </div>
             ))}

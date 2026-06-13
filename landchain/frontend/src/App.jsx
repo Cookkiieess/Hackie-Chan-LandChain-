@@ -5,8 +5,8 @@ import PanchayatDashboard from "./pages/PanchayatDashboard";
 import RegistrarDashboard from "./pages/RegistrarDashboard";
 
 function ProtectedRoute({ children }) {
-  const token = localStorage.getItem("token");
-  const userId = localStorage.getItem("userId");
+  const token = sessionStorage.getItem("token");
+  const userId = sessionStorage.getItem("userId");
 
   if (!token || !userId) {
     return <Navigate to="/" replace />;
@@ -16,7 +16,7 @@ function ProtectedRoute({ children }) {
 }
 
 export default function App() {
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
 
   return (
     <Routes>

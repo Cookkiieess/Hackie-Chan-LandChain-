@@ -2,11 +2,13 @@ import { useMemo, useState } from "react";
 import Sidebar from "../components/Sidebar";
 import DeedDraft from "../components/sections/DeedDraft";
 import Inbox from "../components/sections/Inbox";
+import Properties from "../components/sections/Properties";
 import TaxPayment from "../components/sections/TaxPayment";
 import Transfer from "../components/sections/Transfer";
 
 const mobileSections = [
   { key: "inbox", label: "Inbox" },
+  { key: "properties", label: "Properties" },
   { key: "transfer", label: "Transfer" },
   { key: "deedDraft", label: "Deed Draft" },
   { key: "taxPayment", label: "Tax Payment" },
@@ -14,11 +16,13 @@ const mobileSections = [
 
 export default function HomePage() {
   const [activeSection, setActiveSection] = useState("inbox");
-  const userId = localStorage.getItem("userId") || "";
-  const userName = localStorage.getItem("name") || "LandChain User";
+  const userId = sessionStorage.getItem("userId") || "";
+  const userName = sessionStorage.getItem("name") || "LandChain User";
 
   const sectionContent = useMemo(() => {
     switch (activeSection) {
+      case "properties":
+        return <Properties userId={userId} />;
       case "transfer":
         return <Transfer userId={userId} />;
       case "deedDraft":
