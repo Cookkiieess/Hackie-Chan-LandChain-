@@ -17,6 +17,11 @@ const taxRecordSchema = new mongoose.Schema(
 );
 
 const propertySchema = new mongoose.Schema({
+  landId: {
+    type: String,
+    unique: true,
+    index: true,
+  },
   ulpin: {
     type: String,
     required: true,
@@ -66,7 +71,22 @@ const propertySchema = new mongoose.Schema({
   },
 });
 
-propertySchema.pre("save", function setInternalCode(next) {
+propertySchema.pre("save", async function prepareProperty(next) {
+  if (!this.landId) {
+    let isUnique = false;
+
+    while (!isUnique) {
+      const randomDigits = Math.floor(100000 + Math.random() * 900000);
+      const candidateId = `LAND-${randomDigits}`;
+      const existingProperty = await mongoose.models.Property.findOne({ landId: candidateId });
+
+      if (!existingProperty) {
+        this.landId = candidateId;
+        isUnique = true;
+      }
+    }
+  }
+
   if (this.ulpin) {
     this.internalCode = `LC-${this.ulpin}`;
   }

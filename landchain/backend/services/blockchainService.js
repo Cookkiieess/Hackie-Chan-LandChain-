@@ -1,6 +1,10 @@
 const crypto = require("crypto");
 const BlockchainNode = require("../models/BlockchainNode");
 
+function createNodeId() {
+  return `NODE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+}
+
 function generateHash(nodeId, ulpin, POID, COID, previousNodeId, timestamp) {
   const hashInput = [
     nodeId,
@@ -15,7 +19,7 @@ function generateHash(nodeId, ulpin, POID, COID, previousNodeId, timestamp) {
 }
 
 async function createGenesisNode(ulpin, ownerUserId) {
-  const nodeId = `NODE-${Date.now()}`;
+  const nodeId = createNodeId();
   const timestamp = new Date();
 
   const node = new BlockchainNode({
@@ -34,7 +38,7 @@ async function createGenesisNode(ulpin, ownerUserId) {
 
 async function createTransferNode(ulpin, POID, COID, transferId) {
   const latestNode = await BlockchainNode.findOne({ ulpin }).sort({ timestamp: -1 });
-  const nodeId = `NODE-${Date.now()}`;
+  const nodeId = createNodeId();
   const timestamp = new Date();
   const previousNodeId = latestNode ? latestNode.nodeId : null;
 
