@@ -1,5 +1,6 @@
 import jsPDF from "jspdf";
 import html2canvas from "html2canvas";
+import { translateText } from "./api";
 
 function convertBelowThousand(number) {
   const ones = [
@@ -152,7 +153,10 @@ function escapeHtml(value) {
     .replaceAll("'", "&#39;");
 }
 
-function buildSignatureMarkup(name, label, extraLine, signed, timestamp) {
+function buildSignatureMarkup(name, label, extraLine, signed, timestamp, t) {
+  const verifiedText = t ? t.digitallyVerified : "Digitally Verified";
+  const pendingText = t ? t.sigPending : "Signature Pending";
+
   if (signed) {
     return `
       <div style="font-family:'Dancing Script', cursive; font-size:22px; min-height:60px;">${escapeHtml(name)}</div>
@@ -160,13 +164,13 @@ function buildSignatureMarkup(name, label, extraLine, signed, timestamp) {
       <div style="font-weight:bold;">${escapeHtml(label)}</div>
       <div>${escapeHtml(extraLine)}</div>
       ${timestamp ? `<div>Signed: ${escapeHtml(formatDateTime(timestamp))}</div>` : ""}
-      <div style="color:#065f46; font-weight:bold;">&#10003; Digitally Verified</div>
+      <div style="color:#065f46; font-weight:bold;">&#10003; ${escapeHtml(verifiedText)}</div>
     `;
   }
 
   return `
     <div style="width:160px; height:60px; border:1px dashed #999; margin:0 auto 8px; display:flex; align-items:center; justify-content:center; color:#666;">
-      Signature Pending
+      ${escapeHtml(pendingText)}
     </div>
     <hr style="width:160px; margin:8px auto;">
     <div style="font-weight:bold;">${escapeHtml(label)}</div>
@@ -184,7 +188,7 @@ function getRiskBadge(level) {
   return { bg: "#d1fae5", color: "#065f46" };
 }
 
-export async function generateSaleDeed(transfer, signatures) {
+export async function generateSaleDeed(transfer, signatures, targetLanguageCode = "en-IN") {
   ensureSignatureFont();
   await new Promise((resolve) => setTimeout(resolve, 800));
 
@@ -213,118 +217,178 @@ export async function generateSaleDeed(transfer, signatures) {
   const deedFlags = Array.isArray(transfer.flags) ? transfer.flags : [];
   const currentDateTime = formatDateTime(new Date());
 
+  const baseTextObj = {
+    saleDeed: "SALE DEED",
+    govSystem: "Generated under LandChain Digital Property Transfer System",
+    subRegistrarOffice: "Sub-Registrar Office, Mangaluru District, Karnataka",
+    docNo: "Document No:",
+    dateLabel: "Date:",
+    ulpinLabel: "ULPIN:",
+    stampVendor: "Licensed Stamp Vendor",
+    stampOffice: "Sub-Registrar Office, Mangaluru District",
+    saleDeedFor: `SALE DEED FOR ₹${formatIndianCurrency(transfer.price)}/- (${convertToWords(transfer.price)} Only)`,
+    vendorPara: `This Deed of Sale is executed on this ${deedDateWords.dayWord} day of ${deedDateWords.month} ${deedDateWords.year} by ${signatures.seller?.name || transfer.sellerName || transfer.sellerUserId || "Seller"} (Aadhaar No. XXXX XXXX ${sellerIdSuffix}) S/o. or W/o. Not Specified, hereinafter called the VENDOR which expression shall wherever it occurs in this deed includes his/her heirs, executors, assignees and administrators of one part:`,
+    inFavourOf: "In favour of",
+    vendeePara: `${signatures.buyer?.name || transfer.buyerName || transfer.buyerUserId || "Buyer"} (Aadhaar No. XXXX XXXX ${buyerIdSuffix}) S/o. or W/o. Not Specified, hereinafter called the VENDEE which expression shall wherever it occurs in this deed includes his/her heirs, executors, assignees and administrators of the other part:`,
+    scheduleTitle: "SCHEDULE OF PROPERTY",
+    propertyPara: `The property bearing ULPIN No. ${transfer.ulpin}, Survey No. ${landDetails.surveyNumber || "N/A"}, situated at ${landDetails.location || "N/A"}, measuring ${landDetails.area || "N/A"}, classified as ${landDetails.type || "N/A"} land, as per Revenue Records of Mangaluru District, Karnataka.`,
+    termsTitle: "TERMS AND CONDITIONS",
+    clauses: [
+      `The VENDOR agrees to sell and the VENDEE agrees to purchase the above property for ₹${formatIndianCurrency(transfer.price)}/- (Rupees ${convertToWords(transfer.price)} only).`,
+      `The VENDOR declares the property is free from all encumbrances, mortgages, liens, attachments, and court proceedings as verified by government records on ${formatDate(createdDate)}.`,
+      `The VENDEE shall bear all costs of registration, stamp duty, and other incidental charges.`,
+      `The VENDOR shall hand over vacant possession of the property to the VENDEE on the date of registration.`,
+      `This transfer has been verified and approved by the Sub-Registrar, Mangaluru District and Gram Panchayat as per government records.`,
+      `This deed has been recorded on the LandChain blockchain with Node ID: ${transfer.blockchainNodeId || "Pending"} as an immutable tamper-proof record.`
+    ],
+    aiTitle: "GEMINI AI VERIFICATION REPORT",
+    riskLevel: "Risk Level:",
+    summaryLabel: "Summary:",
+    prevOwnersLabel: "Previous Owners:",
+    taxStatusLabel: "Tax Status:",
+    noFlags: "No flags or concerns found.",
+    govTitle: "GOVERNMENT APPROVALS",
+    subRegistrarApproval: "SUB-REGISTRAR APPROVAL",
+    panchayatApproval: "PANCHAYAT APPROVAL",
+    statusLabel: "Status:",
+    approved: "Approved",
+    approvedOn: "Approved on:",
+    officeLabel: "Office:",
+    sigPending: "Signature Pending",
+    digitallySigned: "Digitally Signed",
+    partySignatures: "PARTY SIGNATURES",
+    vendeeLabel: "VENDEE",
+    vendorLabel: "VENDOR",
+    witness1: "WITNESS 1",
+    witness2: "WITNESS 2",
+    digitallyVerified: "Digitally Verified",
+    footerSystem: "This is a digitally generated Sale Deed under the LandChain Digital Property Transfer System.",
+    blockchainRecord: "Blockchain Record:",
+    generatedOn: "Generated on:",
+    verifyAt: "Verify at:",
+
+    // Dynamic values
+    riskLevelValue: transfer.geminiSummary?.riskLevel || "LOW",
+    deedSummary: deedSummary,
+    previousOwners: previousOwners,
+    taxStatus: taxStatus,
+    flags: deedFlags,
+  };
+
+  if (transfer.agreementConditions) {
+    baseTextObj.clauses.push(`Additional conditions agreed by both parties: ${transfer.agreementConditions}`);
+  }
+
+  let t = baseTextObj;
+
+  if (targetLanguageCode && targetLanguageCode !== "en-IN") {
+    try {
+      const { data } = await translateText(baseTextObj, targetLanguageCode);
+      if (data && data.translatedTexts) {
+        t = data.translatedTexts;
+      }
+    } catch (error) {
+      console.error("Translation failed, falling back to English:", error);
+    }
+  }
+
   const headerHtml = `
-    <div style="text-align:center; font-size:24px; font-weight:bold;">SALE DEED</div>
+    <div style="text-align:center; font-size:24px; font-weight:bold;">${escapeHtml(t.saleDeed)}</div>
     <div style="text-align:center; font-size:12px; color:#666; margin-top:8px;">
-      <div>Generated under LandChain Digital Property Transfer System</div>
-      <div>Sub-Registrar Office, Mangaluru District, Karnataka</div>
+      <div>${escapeHtml(t.govSystem)}</div>
+      <div>${escapeHtml(t.subRegistrarOffice)}</div>
     </div>
     <hr style="margin:18px 0; border:none; border-top:1px solid #bbb;">
     <div style="display:flex; justify-content:space-between; font-size:13px; line-height:1.8;">
       <div>
-        <div><strong>Document No:</strong> ${escapeHtml(transfer.transferId)}</div>
-        <div><strong>Date:</strong> ${escapeHtml(formatDate(createdDate))}</div>
-        <div><strong>ULPIN:</strong> ${escapeHtml(transfer.ulpin)}</div>
+        <div><strong>${escapeHtml(t.docNo)}</strong> ${escapeHtml(transfer.transferId)}</div>
+        <div><strong>${escapeHtml(t.dateLabel)}</strong> ${escapeHtml(formatDate(createdDate))}</div>
+        <div><strong>${escapeHtml(t.ulpinLabel)}</strong> ${escapeHtml(transfer.ulpin)}</div>
       </div>
       <div style="text-align:right;">
         <div><strong>DA</strong> ${randomDaNumber}</div>
-        <div>Licensed Stamp Vendor</div>
-        <div>Sub-Registrar Office, Mangaluru District</div>
+        <div>${escapeHtml(t.stampVendor)}</div>
+        <div>${escapeHtml(t.stampOffice)}</div>
       </div>
     </div>
     <hr style="margin:18px 0; border:none; border-top:1px solid #bbb;">
     <div style="text-align:center; font-size:16px; font-weight:bold; text-decoration:underline;">
-      SALE DEED FOR &#8377;${formatIndianCurrency(transfer.price)}/- (${escapeHtml(convertToWords(transfer.price))} Only)
+      ${escapeHtml(t.saleDeedFor)}
     </div>
   `;
 
   const vendorVendeeHtml = `
     <p style="font-size:13px; line-height:1.9; text-align:justify; margin-top:22px;">
-      This Deed of Sale is executed on this ${escapeHtml(deedDateWords.dayWord)} day of ${escapeHtml(deedDateWords.month)} ${escapeHtml(deedDateWords.year)}
-      by ${escapeHtml(signatures.seller?.name || transfer.sellerName || transfer.sellerUserId || "Seller")}
-      (Aadhaar No. XXXX XXXX ${escapeHtml(sellerIdSuffix)}) S/o. or W/o. Not Specified, hereinafter called the
-      <strong> VENDOR </strong> which expression shall wherever it occurs in this deed includes his/her heirs, executors,
-      assignees and administrators of one part:
+      ${escapeHtml(t.vendorPara)}
     </p>
-    <div style="text-align:center; font-style:italic; font-size:13px; margin:18px 0;">In favour of</div>
+    <div style="text-align:center; font-style:italic; font-size:13px; margin:18px 0;">${escapeHtml(t.inFavourOf)}</div>
     <p style="font-size:13px; line-height:1.9; text-align:justify;">
-      ${escapeHtml(signatures.buyer?.name || transfer.buyerName || transfer.buyerUserId || "Buyer")}
-      (Aadhaar No. XXXX XXXX ${escapeHtml(buyerIdSuffix)}) S/o. or W/o. Not Specified, hereinafter called the
-      <strong> VENDEE </strong> which expression shall wherever it occurs in this deed includes his/her heirs, executors,
-      assignees and administrators of the other part:
+      ${escapeHtml(t.vendeePara)}
     </p>
     <hr style="margin:18px 0; border:none; border-top:1px solid #bbb;">
   `;
 
   const propertyAndTermsHtml = `
-    <div style="text-align:center; font-weight:bold; text-decoration:underline; margin:12px 0 14px;">SCHEDULE OF PROPERTY</div>
+    <div style="text-align:center; font-weight:bold; text-decoration:underline; margin:12px 0 14px;">${escapeHtml(t.scheduleTitle)}</div>
     <p style="font-size:13px; line-height:1.9; text-align:justify;">
-      The property bearing ULPIN No. ${escapeHtml(transfer.ulpin)}, Survey No. ${escapeHtml(landDetails.surveyNumber || "N/A")},
-      situated at ${escapeHtml(landDetails.location || "N/A")}, measuring ${escapeHtml(landDetails.area || "N/A")},
-      classified as ${escapeHtml(landDetails.type || "N/A")} land, as per Revenue Records of Mangaluru District, Karnataka.
+      ${escapeHtml(t.propertyPara)}
     </p>
     <hr style="margin:18px 0; border:none; border-top:1px solid #bbb;">
-    <div style="text-align:center; font-weight:bold; text-decoration:underline; margin:12px 0 14px;">TERMS AND CONDITIONS</div>
-    <p style="font-size:13px; line-height:1.9; text-align:justify;">1. The <strong>VENDOR</strong> agrees to sell and the <strong>VENDEE</strong> agrees to purchase the above property for &#8377;${formatIndianCurrency(transfer.price)}/- (Rupees ${escapeHtml(convertToWords(transfer.price))} only).</p>
-    <p style="font-size:13px; line-height:1.9; text-align:justify;">2. The <strong>VENDOR</strong> declares the property is free from all encumbrances, mortgages, liens, attachments, and court proceedings as verified by government records on ${escapeHtml(formatDate(createdDate))}.</p>
-    <p style="font-size:13px; line-height:1.9; text-align:justify;">3. The <strong>VENDEE</strong> shall bear all costs of registration, stamp duty, and other incidental charges.</p>
-    <p style="font-size:13px; line-height:1.9; text-align:justify;">4. The <strong>VENDOR</strong> shall hand over vacant possession of the property to the <strong>VENDEE</strong> on the date of registration.</p>
-    <p style="font-size:13px; line-height:1.9; text-align:justify;">5. This transfer has been verified and approved by the Sub-Registrar, Mangaluru District and Gram Panchayat as per government records.</p>
-    <p style="font-size:13px; line-height:1.9; text-align:justify;">6. This deed has been recorded on the LandChain blockchain with Node ID: ${escapeHtml(transfer.blockchainNodeId || "Pending")} as an immutable tamper-proof record.</p>
-    ${transfer.agreementConditions ? `<p style="font-size:13px; line-height:1.9; text-align:justify;">7. Additional conditions agreed by both parties: ${escapeHtml(transfer.agreementConditions)}</p>` : ""}
+    <div style="text-align:center; font-weight:bold; text-decoration:underline; margin:12px 0 14px;">${escapeHtml(t.termsTitle)}</div>
+    ${(t.clauses || []).map((clause, idx) => `<p style="font-size:13px; line-height:1.9; text-align:justify;">${idx + 1}. ${escapeHtml(clause)}</p>`).join("")}
     <hr style="margin:18px 0; border:none; border-top:1px solid #bbb;">
   `;
 
   const aiAndGovHtml = `
     <div style="background:#f5f5f5; border:1px solid #ddd; padding:16px; margin-bottom:16px; font-size:13px; line-height:1.8;">
-      <div style="text-align:center; font-weight:bold; margin-bottom:10px;">GEMINI AI VERIFICATION REPORT</div>
-      <div>Risk Level:
+      <div style="text-align:center; font-weight:bold; margin-bottom:10px;">${escapeHtml(t.aiTitle)}</div>
+      <div>${escapeHtml(t.riskLevel)}
         <span style="display:inline-block; margin-left:8px; padding:3px 10px; border-radius:999px; background:${riskBadge.bg}; color:${riskBadge.color}; font-weight:bold;">
-          ${escapeHtml(transfer.geminiSummary?.riskLevel || "LOW")}
+          ${escapeHtml(t.riskLevelValue)}
         </span>
       </div>
-      <div><strong>Summary:</strong> ${escapeHtml(deedSummary)}</div>
-      <div><strong>Previous Owners:</strong> ${escapeHtml(previousOwners)}</div>
-      <div><strong>Tax Status:</strong> ${escapeHtml(taxStatus)}</div>
+      <div><strong>${escapeHtml(t.summaryLabel)}</strong> ${escapeHtml(t.deedSummary)}</div>
+      <div><strong>${escapeHtml(t.prevOwnersLabel)}</strong> ${escapeHtml(t.previousOwners)}</div>
+      <div><strong>${escapeHtml(t.taxStatusLabel)}</strong> ${escapeHtml(t.taxStatus)}</div>
       <div style="margin-top:8px;">
-        ${deedFlags.length === 0 ? "No flags or concerns found." : deedFlags.map((flag) => `<div style="color:#92400e;">&#9888; ${escapeHtml(flag)}</div>`).join("")}
+        ${t.flags && t.flags.length === 0 ? escapeHtml(t.noFlags) : (t.flags || []).map((flag) => `<div style="color:#92400e;">&#9888; ${escapeHtml(flag)}</div>`).join("")}
       </div>
     </div>
     <hr style="margin:18px 0; border:none; border-top:1px solid #bbb;">
-    <div style="text-align:center; font-weight:bold; text-decoration:underline; margin:12px 0 14px;">GOVERNMENT APPROVALS</div>
+    <div style="text-align:center; font-weight:bold; text-decoration:underline; margin:12px 0 14px;">${escapeHtml(t.govTitle)}</div>
     <div style="display:grid; grid-template-columns:1fr 1fr; gap:16px; margin-bottom:18px;">
       <div style="border:1px solid #333; padding:16px; font-size:13px; line-height:1.8;">
-        <div style="font-weight:bold;">SUB-REGISTRAR APPROVAL</div>
-        <div>Status: &#10003; Approved</div>
-        <div>Approved on: ${escapeHtml(transfer.registrarAction?.timestamp ? formatDateTime(transfer.registrarAction.timestamp) : "Pending")}</div>
-        <div>Office: Sub-Registrar, Mangaluru District</div>
+        <div style="font-weight:bold;">${escapeHtml(t.subRegistrarApproval)}</div>
+        <div>${escapeHtml(t.statusLabel)} &#10003; ${escapeHtml(t.approved)}</div>
+        <div>${escapeHtml(t.approvedOn)} ${escapeHtml(transfer.registrarAction?.timestamp ? formatDateTime(transfer.registrarAction.timestamp) : "Pending")}</div>
+        <div>${escapeHtml(t.officeLabel)} Sub-Registrar, Mangaluru District</div>
         <div style="margin-top:12px; text-align:center;">
           ${signatures.registrar?.signed ? `
             <div style="font-family:'Dancing Script', cursive; font-size:22px;">${escapeHtml(signatures.registrar.name || "Registrar")}</div>
             <hr style="width:180px;">
             <div>Sub-Registrar, Mangaluru District</div>
-            <div>&#128274; Digitally Signed</div>
+            <div>&#128274; ${escapeHtml(t.digitallySigned)}</div>
           ` : `
             <div style="width:180px; height:60px; border:1px dashed #999; margin:0 auto; display:flex; align-items:center; justify-content:center; color:#666;">
-              Signature Pending
+              ${escapeHtml(t.sigPending)}
             </div>
           `}
         </div>
       </div>
       <div style="border:1px solid #333; padding:16px; font-size:13px; line-height:1.8;">
-        <div style="font-weight:bold;">PANCHAYAT APPROVAL</div>
-        <div>Status: &#10003; Approved</div>
-        <div>Approved on: ${escapeHtml(transfer.panchayatAction?.timestamp ? formatDateTime(transfer.panchayatAction.timestamp) : "Pending")}</div>
-        <div>Office: Gram Panchayat, Mangaluru</div>
+        <div style="font-weight:bold;">${escapeHtml(t.panchayatApproval)}</div>
+        <div>${escapeHtml(t.statusLabel)} &#10003; ${escapeHtml(t.approved)}</div>
+        <div>${escapeHtml(t.approvedOn)} ${escapeHtml(transfer.panchayatAction?.timestamp ? formatDateTime(transfer.panchayatAction.timestamp) : "Pending")}</div>
+        <div>${escapeHtml(t.officeLabel)} Gram Panchayat, Mangaluru</div>
         <div style="margin-top:12px; text-align:center;">
           ${signatures.panchayat?.signed ? `
             <div style="font-family:'Dancing Script', cursive; font-size:22px;">${escapeHtml(signatures.panchayat.name || "Panchayat Officer")}</div>
             <hr style="width:180px;">
             <div>Panchayat Officer, Mangaluru</div>
-            <div>&#128274; Digitally Signed</div>
+            <div>&#128274; ${escapeHtml(t.digitallySigned)}</div>
           ` : `
             <div style="width:180px; height:60px; border:1px dashed #999; margin:0 auto; display:flex; align-items:center; justify-content:center; color:#666;">
-              Signature Pending
+              ${escapeHtml(t.sigPending)}
             </div>
           `}
         </div>
@@ -334,45 +398,47 @@ export async function generateSaleDeed(transfer, signatures) {
   `;
 
   const signaturesAndFooterHtml = `
-    <div style="text-align:center; font-weight:bold; text-decoration:underline; margin:12px 0 18px;">PARTY SIGNATURES</div>
+    <div style="text-align:center; font-weight:bold; text-decoration:underline; margin:12px 0 18px;">${escapeHtml(t.partySignatures)}</div>
     <div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; text-align:center; font-size:13px; line-height:1.8;">
       <div>
         ${buildSignatureMarkup(
           signatures.buyer?.name || transfer.buyerName || transfer.buyerUserId || "Buyer",
-          "VENDEE",
+          t.vendeeLabel,
           transfer.buyerUserId || "",
           Boolean(signatures.buyer?.signed),
-          signatures.buyer?.timestamp
+          signatures.buyer?.timestamp,
+          t
         )}
       </div>
       <div>
         ${buildSignatureMarkup(
           signatures.seller?.name || transfer.sellerName || transfer.sellerUserId || "Seller",
-          "VENDOR",
+          t.vendorLabel,
           transfer.sellerUserId || "",
           Boolean(signatures.seller?.signed),
-          signatures.seller?.timestamp
+          signatures.seller?.timestamp,
+          t
         )}
       </div>
       <div>
         <div style="font-family:'Dancing Script', cursive; font-size:22px; min-height:60px;">Rajesh Shetty</div>
         <hr style="width:160px; margin:8px auto;">
-        <div style="font-weight:bold;">WITNESS 1</div>
+        <div style="font-weight:bold;">${escapeHtml(t.witness1)}</div>
         <div>Mangaluru, Karnataka</div>
       </div>
       <div>
         <div style="font-family:'Dancing Script', cursive; font-size:22px; min-height:60px;">Priya Nair</div>
         <hr style="width:160px; margin:8px auto;">
-        <div style="font-weight:bold;">WITNESS 2</div>
+        <div style="font-weight:bold;">${escapeHtml(t.witness2)}</div>
         <div>Mangaluru, Karnataka</div>
       </div>
     </div>
     <hr style="margin:18px 0; border:none; border-top:1px solid #bbb;">
     <div style="text-align:center; font-size:10px; color:#666; line-height:1.8;">
-      <div>This is a digitally generated Sale Deed under the LandChain Digital Property Transfer System.</div>
-      <div>Blockchain Record: ${escapeHtml(transfer.blockchainNodeId || "Pending")}</div>
-      <div>Generated on: ${escapeHtml(currentDateTime)}</div>
-      <div>Verify at: landchain.gov.in/verify/${escapeHtml(transfer.ulpin || "")}</div>
+      <div>${escapeHtml(t.footerSystem)}</div>
+      <div>${escapeHtml(t.blockchainRecord)} ${escapeHtml(transfer.blockchainNodeId || "Pending")}</div>
+      <div>${escapeHtml(t.generatedOn)} ${escapeHtml(currentDateTime)}</div>
+      <div>${escapeHtml(t.verifyAt)} landchain.gov.in/verify/${escapeHtml(transfer.ulpin || "")}</div>
     </div>
   `;
 
