@@ -121,6 +121,18 @@ function PaymentCard({ transfer, onConfirm, pendingPaymentId, paymentRefs, setPa
   );
 }
 
+const SUPPORTED_LANGUAGES = [
+  { code: "en-IN", name: "English" },
+  { code: "kn-IN", name: "Kannada (ಕನ್ನಡ)" },
+  { code: "hi-IN", name: "Hindi (हिन्दी)" },
+  { code: "te-IN", name: "Telugu (తెలుగు)" },
+  { code: "ta-IN", name: "Tamil (தமிழ்)" },
+  { code: "ml-IN", name: "Malayalam (മലയാളം)" },
+  { code: "mr-IN", name: "Marathi (मराठी)" },
+  { code: "bn-IN", name: "Bengali (বাংলা)" },
+  { code: "gu-IN", name: "Gujarati (ગુજરાતી)" },
+];
+
 export default function Transfer({ userId }) {
   const [step, setStep] = useState(STEP.ULPIN_ENTRY);
   const [ulpin, setUlpin] = useState("");
@@ -136,6 +148,8 @@ export default function Transfer({ userId }) {
   const [pendingPaymentId, setPendingPaymentId] = useState("");
   const [paymentRefs, setPaymentRefs] = useState({});
   const [recentSignedTransfer, setRecentSignedTransfer] = useState(null);
+  const [sellerLang, setSellerLang] = useState("en-IN");
+  const [historyLangs, setHistoryLangs] = useState({});
 
   const visibleTransfers = useMemo(
     () =>
@@ -279,61 +293,70 @@ export default function Transfer({ userId }) {
       return;
     }
 
-    await generateSaleDeed(recentSignedTransfer, {
-      seller: {
-        name: sessionStorage.getItem("name") || recentSignedTransfer.sellerName || recentSignedTransfer.sellerUserId,
-        userId,
-        timestamp: recentSignedTransfer.sellerSignature?.timestamp,
-        signed: true,
-      },
-      buyer: {
-        name: recentSignedTransfer.buyerName || recentSignedTransfer.buyerUserId,
-        userId: recentSignedTransfer.buyerUserId,
-        timestamp: null,
-        signed: false,
-      },
-      registrar: {
-        name: "Registrar Officer",
-        timestamp: null,
-        signed: false,
-      },
-      panchayat: {
-        name: "Panchayat Officer",
-        timestamp: null,
-        signed: false,
-      },
-    });
-
-    toast.success("Sale Deed downloaded successfully");
+    const loadingToastId = toast.loading("Translating and generating Sale Deed...");
+    try {
+      await generateSaleDeed(recentSignedTransfer, {
+        seller: {
+          name: sessionStorage.getItem("name") || recentSignedTransfer.sellerName || recentSignedTransfer.sellerUserId,
+          userId,
+          timestamp: recentSignedTransfer.sellerSignature?.timestamp,
+          signed: true,
+        },
+        buyer: {
+          name: recentSignedTransfer.buyerName || recentSignedTransfer.buyerUserId,
+          userId: recentSignedTransfer.buyerUserId,
+          timestamp: null,
+          signed: false,
+        },
+        registrar: {
+          name: "Registrar Officer",
+          timestamp: null,
+          signed: false,
+        },
+        panchayat: {
+          name: "Panchayat Officer",
+          timestamp: null,
+          signed: false,
+        },
+      }, sellerLang);
+      toast.success("Sale Deed downloaded successfully", { id: loadingToastId });
+    } catch (error) {
+      toast.error("Failed to generate Sale Deed", { id: loadingToastId });
+    }
   };
 
   const handleDownloadFinalDeed = async (transfer) => {
-    await generateSaleDeed(transfer, {
-      seller: {
-        name: transfer.sellerName || transfer.sellerUserId,
-        userId: transfer.sellerUserId,
-        timestamp: transfer.sellerSignature?.timestamp,
-        signed: true,
-      },
-      buyer: {
-        name: transfer.buyerName || transfer.buyerUserId,
-        userId: transfer.buyerUserId,
-        timestamp: transfer.buyerSignature?.timestamp,
-        signed: true,
-      },
-      registrar: {
-        name: "Registrar Officer",
-        timestamp: transfer.registrarAction?.timestamp,
-        signed: true,
-      },
-      panchayat: {
-        name: "Panchayat Officer",
-        timestamp: transfer.panchayatAction?.timestamp,
-        signed: true,
-      },
-    });
-
-    toast.success("Final Sale Deed downloaded successfully");
+    const selectedLang = historyLangs[transfer.transferId] || "en-IN";
+    const loadingToastId = toast.loading("Translating and generating Sale Deed...");
+    try {
+      await generateSaleDeed(transfer, {
+        seller: {
+          name: transfer.sellerName || transfer.sellerUserId,
+          userId: transfer.sellerUserId,
+          timestamp: transfer.sellerSignature?.timestamp,
+          signed: true,
+        },
+        buyer: {
+          name: transfer.buyerName || transfer.buyerUserId,
+          userId: transfer.buyerUserId,
+          timestamp: transfer.buyerSignature?.timestamp,
+          signed: true,
+        },
+        registrar: {
+          name: "Registrar Officer",
+          timestamp: transfer.registrarAction?.timestamp,
+          signed: true,
+        },
+        panchayat: {
+          name: "Panchayat Officer",
+          timestamp: transfer.panchayatAction?.timestamp,
+          signed: true,
+        },
+      }, selectedLang);
+      toast.success("Final Sale Deed downloaded successfully", { id: loadingToastId });
+    } catch (error) {
+      toast.error("Failed to generate Sale Deed", { id: loadingToastId });
+    }
   };
 
   return (
@@ -627,13 +650,26 @@ export default function Transfer({ userId }) {
             </h1>
             <p className="mt-3 max-w-md text-sm text-slate-500">Track progress below.</p>
             {recentSignedTransfer ? (
-              <button
-                type="button"
-                onClick={handleDownloadSellerCopy}
-                className="mt-6 rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-800"
-              >
-                Download My Copy
-              </button>
+              <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
+                <select
+                  value={sellerLang}
+                  onChange={(e) => setSellerLang(e.target.value)}
+                  className="rounded-2xl border border-slate-300 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-slate-500"
+                >
+                  {SUPPORTED_LANGUAGES.map((lang) => (
+                    <option key={lang.code} value={lang.code}>
+                      {lang.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={handleDownloadSellerCopy}
+                  className="rounded-2xl bg-slate-900 px-5 py-3 font-semibold text-white transition hover:bg-slate-800"
+                >
+                  Download My Copy
+                </button>
+              </div>
             ) : null}
           </div>
         ) : null}
@@ -673,20 +709,38 @@ export default function Transfer({ userId }) {
                   </div>
                 ) : null}
                 {transfer.status === "COMPLETED" ? (
-                  <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-5 flex items-center justify-between">
+                  <div className="rounded-[24px] border border-emerald-200 bg-emerald-50 p-5 flex flex-wrap items-center justify-between gap-4">
                     <div>
                       <p className="font-semibold text-emerald-800">Transfer Completed Successfully</p>
                       <p className="text-sm text-emerald-700">
                         The ownership has been successfully updated on the blockchain.
                       </p>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => handleDownloadFinalDeed(transfer)}
-                      className="rounded-2xl bg-emerald-600 px-5 py-3 font-semibold text-white transition hover:bg-emerald-700"
-                    >
-                      Download Final Sale Deed
-                    </button>
+                    <div className="flex flex-wrap items-center gap-3">
+                      <select
+                        value={historyLangs[transfer.transferId] || "en-IN"}
+                        onChange={(e) =>
+                          setHistoryLangs((current) => ({
+                            current,
+                            [transfer.transferId]: e.target.value,
+                          }))
+                        }
+                        className="rounded-2xl border border-emerald-200 bg-white px-4 py-3 text-sm font-semibold text-slate-700 outline-none focus:border-emerald-500"
+                      >
+                        {SUPPORTED_LANGUAGES.map((lang) => (
+                          <option key={lang.code} value={lang.code}>
+                            {lang.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadFinalDeed(transfer)}
+                        className="rounded-2xl bg-emerald-600 px-5 py-3 font-semibold text-white transition hover:bg-emerald-700"
+                      >
+                        Download Final Sale Deed
+                      </button>
+                    </div>
                   </div>
                 ) : null}
               </div>

@@ -53,4 +53,7 @@ export const markNotificationRead = (id) => api.put(`/notifications/${id}/read`)
 export const getBlockchain = (ulpin) => api.get(`/blockchain/${ulpin}`);
 export const verifyBlockchain = (ulpin) => api.get(`/blockchain/verify/${ulpin}`);
 
+export const translateText = (texts, targetLanguageCode) =>
+  api.post("/translate", { texts, targetLanguageCode });
+
 export default api;
