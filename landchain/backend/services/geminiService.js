@@ -39,7 +39,11 @@ async function analyzeProperty(combinedData) {
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
-    return MOCK_ANALYSIS;
+    const mock = JSON.parse(JSON.stringify(MOCK_ANALYSIS));
+    if (combinedData.revenueData?.previousOwners) {
+      mock.previousOwners = combinedData.revenueData.previousOwners;
+    }
+    return mock;
   }
 
   try {
@@ -62,7 +66,11 @@ Data: ${JSON.stringify(combinedData)}`;
 
     return extractJson(text);
   } catch (error) {
-    return MOCK_ANALYSIS;
+    const mock = JSON.parse(JSON.stringify(MOCK_ANALYSIS));
+    if (combinedData.revenueData?.previousOwners) {
+      mock.previousOwners = combinedData.revenueData.previousOwners;
+    }
+    return mock;
   }
 }
 

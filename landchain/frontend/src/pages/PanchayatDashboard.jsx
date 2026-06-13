@@ -2,6 +2,7 @@ import { CheckCircle2, Landmark, ShieldCheck } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
 import { getAllTransfers, panchayatApprove, panchayatDecline } from "../utils/api";
+import { generateSaleDeed } from "../utils/generateDeed";
 
 const mockTransfer = {
   transferId: "TXN-1718250200000",
@@ -72,6 +73,7 @@ function AuthCard({ onLogin }) {
 export default function PanchayatDashboard() {
   const [authenticated, setAuthenticated] = useState(false);
   const [transfers, setTransfers] = useState([]);
+  const [lastApprovedTransfer, setLastApprovedTransfer] = useState(null);
 
   const loadTransfers = async () => {
     try {
@@ -104,6 +106,18 @@ export default function PanchayatDashboard() {
     try {
       await panchayatApprove(transferId);
       toast.success("Approved. Transfer forwarded for payment.");
+      const approvedTransfer = transfers.find((item) => item.transferId === transferId);
+      if (approvedTransfer) {
+        setLastApprovedTransfer({
+          ...approvedTransfer,
+          status: "PAYMENT_PENDING",
+          panchayatAction: {
+            approved: true,
+            timestamp: new Date().toISOString(),
+            comment: "",
+          },
+        });
+      }
       setTransfers((current) => current.filter((item) => item.transferId !== transferId));
     } catch (error) {
       toast.error("Failed to approve transfer");
@@ -130,6 +144,39 @@ export default function PanchayatDashboard() {
     return <AuthCard onLogin={handleLogin} />;
   }
 
+  const handleDownloadMasterCopy = async () => {
+    if (!lastApprovedTransfer) {
+      return;
+    }
+
+    await generateSaleDeed(lastApprovedTransfer, {
+      seller: {
+        name: lastApprovedTransfer.sellerName || lastApprovedTransfer.sellerUserId,
+        userId: lastApprovedTransfer.sellerUserId,
+        timestamp: lastApprovedTransfer.sellerSignature?.timestamp,
+        signed: true,
+      },
+      buyer: {
+        name: lastApprovedTransfer.buyerName || lastApprovedTransfer.buyerUserId,
+        userId: lastApprovedTransfer.buyerUserId,
+        timestamp: lastApprovedTransfer.buyerSignature?.timestamp,
+        signed: true,
+      },
+      registrar: {
+        name: "Registrar Officer",
+        timestamp: lastApprovedTransfer.registrarAction?.timestamp,
+        signed: true,
+      },
+      panchayat: {
+        name: "Panchayat Officer",
+        timestamp: lastApprovedTransfer.panchayatAction?.timestamp,
+        signed: true,
+      },
+    });
+
+    toast.success("Master deed copy downloaded");
+  };
+
   return (
     <div className="min-h-screen bg-slate-100 px-4 py-6 md:px-8">
       <div className="rounded-[24px] bg-emerald-100 px-6 py-4 text-sm font-semibold text-emerald-900">
@@ -145,6 +192,24 @@ export default function PanchayatDashboard() {
           {pendingCount} pending
         </div>
       </div>
+
+      {lastApprovedTransfer ? (
+        <div className="mt-6 flex items-center justify-between rounded-[24px] border border-emerald-200 bg-emerald-50 px-6 py-4">
+          <div>
+            <p className="font-semibold text-emerald-800">Master copy ready</p>
+            <p className="text-sm text-emerald-700">
+              Transfer {lastApprovedTransfer.transferId} now has the fully approved deed copy.
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={handleDownloadMasterCopy}
+            className="rounded-2xl bg-emerald-600 px-4 py-3 font-semibold text-white transition hover:bg-emerald-700"
+          >
+            Download Approved Copy
+          </button>
+        </div>
+      ) : null}
 
       <div className="mt-6 space-y-6">
         {transfers.map((transfer) => (

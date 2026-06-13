@@ -1,4 +1,6 @@
 import { AlertTriangle, FileText, ShieldCheck, Sparkles, X } from "lucide-react";
+import toast from "react-hot-toast";
+import { generateSaleDeed } from "../../utils/generateDeed";
 
 function formatCurrency(amount) {
   return new Intl.NumberFormat("en-IN", {
@@ -20,6 +22,42 @@ function riskClass(level) {
 
 export default function AgreementModal({ transfer, onClose, onSign, onDecline, isBuyer }) {
   const detail = transfer.geminiSummary?.landDetails || {};
+
+  const handleBuyerSign = async () => {
+    try {
+      const signedTransfer = await onSign();
+      const buyerName = sessionStorage.getItem("name") || transfer.buyerUserId || "Buyer";
+
+      await generateSaleDeed(signedTransfer || transfer, {
+        seller: {
+          name: transfer.sellerName || transfer.sellerUserId || "Seller",
+          userId: transfer.sellerUserId,
+          timestamp: transfer.sellerSignature?.timestamp,
+          signed: true,
+        },
+        buyer: {
+          name: buyerName || transfer.buyerName || transfer.buyerUserId || "Buyer",
+          userId: transfer.buyerUserId,
+          timestamp: signedTransfer?.buyerSignature?.timestamp || new Date().toISOString(),
+          signed: true,
+        },
+        registrar: {
+          name: "Registrar Officer",
+          timestamp: null,
+          signed: false,
+        },
+        panchayat: {
+          name: "Panchayat Officer",
+          timestamp: null,
+          signed: false,
+        },
+      });
+
+      toast.success("Sale Deed downloaded successfully");
+    } catch (error) {
+      // `onSign` already surfaces the failure toast.
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 overflow-y-auto bg-slate-950/70 px-4 py-6">
@@ -158,7 +196,7 @@ export default function AgreementModal({ transfer, onClose, onSign, onDecline, i
               </button>
               <button
                 type="button"
-                onClick={onSign}
+                onClick={handleBuyerSign}
                 className="rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-white transition hover:bg-emerald-600"
               >
                 Agree & Sign Digitally

@@ -34,13 +34,21 @@ export default function DeedDraft({ userId }) {
 
   const handleSign = async (transfer) => {
     try {
-      await buyerSign(transfer.transferId);
-      toast.success("Agreement signed successfully");
+      const { data } = await buyerSign(transfer.transferId);
+      const signedTransfer = {
+        ...transfer,
+        status: data.status,
+        buyerSignature: {
+          signed: true,
+          timestamp: new Date().toISOString(),
+        },
+      };
       setSelectedTransfer(null);
       await loadTransfers();
-      window.print();
+      return signedTransfer;
     } catch (error) {
       toast.error("Failed to sign agreement");
+      throw error;
     }
   };
 

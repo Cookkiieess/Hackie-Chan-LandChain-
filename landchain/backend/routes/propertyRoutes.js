@@ -1,5 +1,7 @@
 const express = require("express");
 const Property = require("../models/Property");
+const User = require("../models/User");
+const Transfer = require("../models/Transfer");
 const { createGenesisNode, getChain } = require("../services/blockchainService");
 const { analyzeProperty } = require("../services/geminiService");
 
@@ -104,6 +106,47 @@ router.post("/fetch", async (req, res) => {
       requesterUserId,
       revenueData,
     });
+
+    // Fetch the blockchain nodes to dynamically enrich registration history and ownership history
+    const chain = await getChain(ulpin);
+    for (const node of chain) {
+      if (node.POID !== "GOVERNMENT" && node.transferId) {
+        const transferDoc = await Transfer.findOne({ transferId: node.transferId });
+        if (transferDoc) {
+          const year = new Date(transferDoc.createdAt || node.timestamp).getFullYear();
+          const sellerName = transferDoc.sellerName || transferDoc.sellerUserId;
+          const buyerName = transferDoc.buyerName || transferDoc.buyerUserId;
+
+          // Add to Kaveri registration history
+          kaveriData.registrationHistory.unshift({
+            year,
+            type: "Sale Deed (Digital)",
+            parties: `${sellerName} to ${buyerName}`,
+            value: new Intl.NumberFormat("en-IN").format(transferDoc.price),
+          });
+
+          // Update previousOwners in revenueData
+          if (revenueData.previousOwners && revenueData.previousOwners.length > 0) {
+            const lastIdx = revenueData.previousOwners.length - 1;
+            const lastOwnerStr = revenueData.previousOwners[lastIdx];
+            if (lastOwnerStr.endsWith("-present)")) {
+              revenueData.previousOwners[lastIdx] = lastOwnerStr.replace("-present)", `-${year})`);
+            }
+            revenueData.previousOwners.push(`${buyerName} (${year}-present)`);
+          }
+        }
+      }
+    }
+
+    // Set dynamic owner name in revenueData based on propertyRecord
+    if (propertyRecord) {
+      const currentOwnerUser = await User.findOne({ userId: propertyRecord.ownerUserId });
+      if (currentOwnerUser) {
+        revenueData.ownerName = currentOwnerUser.name;
+      } else {
+        revenueData.ownerName = propertyRecord.ownerUserId;
+      }
+    }
 
     return res.json({
       ulpin,
