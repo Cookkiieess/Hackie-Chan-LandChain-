@@ -38,6 +38,7 @@ export default function ProgressTracker({ transfer }) {
   const activeStep = statusToStep[transfer.status] || 1;
   const isRegistrarDeclined = transfer.status === "REGISTRAR_DECLINED";
   const isPanchayatDeclined = transfer.status === "PANCHAYAT_DECLINED";
+  const isCompletedTransfer = transfer.status === "COMPLETED";
 
   return (
     <div className="rounded-[24px] border border-slate-200 bg-white p-5 shadow-sm">
@@ -51,7 +52,7 @@ export default function ProgressTracker({ transfer }) {
           <p>Price: {formatCurrency(transfer.price)}</p>
           <p>
             Counterparty:{" "}
-            {transfer.sellerUserId === localStorage.getItem("userId")
+            {transfer.sellerUserId === sessionStorage.getItem("userId")
               ? transfer.buyerUserId
               : transfer.sellerUserId}
           </p>
@@ -62,8 +63,10 @@ export default function ProgressTracker({ transfer }) {
         <div className="flex min-w-[760px] items-start">
           {steps.map((label, index) => {
             const stepNumber = index + 1;
-            const completed = stepNumber < activeStep && !isRegistrarDeclined && !isPanchayatDeclined;
-            const active = stepNumber === activeStep;
+            const completed =
+              (stepNumber < activeStep && !isRegistrarDeclined && !isPanchayatDeclined) ||
+              (isCompletedTransfer && stepNumber === steps.length);
+            const active = stepNumber === activeStep && !isCompletedTransfer;
             const declined = (isRegistrarDeclined && stepNumber === 5) || (isPanchayatDeclined && stepNumber === 7);
 
             return (

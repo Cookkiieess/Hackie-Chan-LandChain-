@@ -42,9 +42,9 @@ export default function AuthPage() {
   );
 
   const persistSession = (data) => {
-    localStorage.setItem("token", data.token);
-    localStorage.setItem("userId", data.userId);
-    localStorage.setItem("name", data.name);
+    sessionStorage.setItem("token", data.token);
+    sessionStorage.setItem("userId", data.userId);
+    sessionStorage.setItem("name", data.name);
   };
 
   const handleSendOtp = async (mode) => {

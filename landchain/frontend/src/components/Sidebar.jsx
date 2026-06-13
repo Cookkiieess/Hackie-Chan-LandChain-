@@ -3,6 +3,7 @@ import {
   Inbox,
   Link as LinkIcon,
   LogOut,
+  Map,
   Receipt,
   FileText,
 } from "lucide-react";
@@ -10,6 +11,7 @@ import { useNavigate } from "react-router-dom";
 
 const navItems = [
   { key: "inbox", label: "Inbox", icon: Inbox },
+  { key: "properties", label: "Properties", icon: Map },
   { key: "transfer", label: "Transfer", icon: ArrowRightLeft },
   { key: "deedDraft", label: "Deed Draft", icon: FileText },
   { key: "taxPayment", label: "Tax Payment", icon: Receipt },
@@ -19,9 +21,9 @@ export default function Sidebar({ activeSection, setActiveSection, userName, use
   const navigate = useNavigate();
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("userId");
-    localStorage.removeItem("name");
+    sessionStorage.removeItem("token");
+    sessionStorage.removeItem("userId");
+    sessionStorage.removeItem("name");
     navigate("/");
   };
 

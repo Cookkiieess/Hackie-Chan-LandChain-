@@ -5,7 +5,7 @@ const api = axios.create({
 });
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem("token");
+  const token = sessionStorage.getItem("token");
 
   if (token) {
     config.headers.Authorization = `Bearer ${token}`;
@@ -17,9 +17,13 @@ api.interceptors.request.use((config) => {
 export const signup = (data) => api.post("/auth/signup", data);
 export const login = (data) => api.post("/auth/login", data);
 
-export const fetchProperty = (ulpin) => api.post("/property/fetch", { ulpin });
+export const fetchProperty = (ulpin, requesterUserId) =>
+  api.post("/property/fetch", { ulpin, requesterUserId });
 export const analyzeProperty = (ulpin, combinedData) =>
   api.post("/property/analyze", { ulpin, combinedData });
+export const getUserProperties = (userId) => api.get(`/property/user/${userId}`);
+export const getPropertyByUlpin = (ulpin) => api.get(`/property/${ulpin}`);
+export const payPropertyTax = (ulpin, year) => api.put(`/property/${ulpin}/tax/pay`, { year });
 
 export const initiateTransfer = (data) => api.post("/transfer/initiate", data);
 export const sellerSign = (transferId) => api.post("/transfer/seller-sign", { transferId });
