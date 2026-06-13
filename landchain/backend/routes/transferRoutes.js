@@ -3,7 +3,9 @@ const Notification = require("../models/Notification");
 const Property = require("../models/Property");
 const Transfer = require("../models/Transfer");
 const {
+  createGenesisNode,
   createTransferNode,
+  getChain,
 } = require("../services/blockchainService");
 
 const router = express.Router();
@@ -42,6 +44,33 @@ router.post("/initiate", async (req, res) => {
       geminiSummary,
       flags,
     } = req.body;
+
+    const property = await Property.findOne({ ulpin });
+
+    if (!property) {
+      return res.status(404).json({ error: "Property record not found. Fetch the property first." });
+    }
+
+    if (property.ownerUserId !== sellerUserId) {
+      return res.status(403).json({ error: "Only the current property owner can initiate a transfer." });
+    }
+
+    const hasPendingTax = (property.taxRecords || []).some(
+      (record) => String(record.status).toLowerCase() === "unpaid"
+    );
+
+    if (hasPendingTax) {
+      await createNotification({
+        userId: sellerUserId,
+        type: "STATUS_UPDATE",
+        title: "Transfer Blocked",
+        message: `Transfer declined for ${ulpin}: pending property tax dues must be cleared first.`,
+      });
+
+      return res.status(400).json({
+        error: "Transfer declined: pending property tax dues must be cleared first.",
+      });
+    }
 
     const transfer = await Transfer.create({
       sellerUserId,
@@ -350,14 +379,36 @@ router.post("/payment", async (req, res) => {
       return;
     }
 
-    transfer.paymentRef = paymentRef;
-    transfer.status = "COMPLETED";
+    if (transfer.status === "COMPLETED") {
+      return res.json({
+        transferId: transfer.transferId,
+        status: transfer.status,
+        blockchainNodeId: transfer.blockchainNodeId,
+      });
+    }
 
-    const property = await Property.findOne({ ulpin: transfer.ulpin });
+    if (transfer.status !== "PAYMENT_PENDING") {
+      return res.status(400).json({ error: "Transfer is not ready for payment." });
+    }
 
-    if (property) {
-      property.ownerUserId = transfer.buyerUserId;
-      await property.save();
+    let property = await Property.findOne({ ulpin: transfer.ulpin });
+
+    if (!property) {
+      property = await Property.create({
+        ulpin: transfer.ulpin,
+        ownerUserId: transfer.sellerUserId,
+        area: transfer.geminiSummary?.landDetails?.area || "",
+        type: transfer.geminiSummary?.landDetails?.type || "Agricultural",
+        location: transfer.geminiSummary?.landDetails?.location || "",
+        village: transfer.geminiSummary?.landDetails?.location || "",
+        taluk: "",
+        district: "",
+      });
+    }
+
+    const chain = await getChain(transfer.ulpin);
+    if (!chain.length) {
+      await createGenesisNode(transfer.ulpin, transfer.sellerUserId);
     }
 
     const node = await createTransferNode(
@@ -367,6 +418,11 @@ router.post("/payment", async (req, res) => {
       transfer.transferId
     );
 
+    property.ownerUserId = transfer.buyerUserId;
+    await property.save();
+
+    transfer.paymentRef = paymentRef;
+    transfer.status = "COMPLETED";
     transfer.blockchainNodeId = node.nodeId;
     await transfer.save();
 

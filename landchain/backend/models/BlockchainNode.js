@@ -1,6 +1,10 @@
 const crypto = require("crypto");
 const mongoose = require("mongoose");
 
+function createNodeId() {
+  return `NODE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+}
+
 const blockchainNodeSchema = new mongoose.Schema({
   nodeId: {
     type: String,
@@ -43,7 +47,7 @@ const blockchainNodeSchema = new mongoose.Schema({
 
 blockchainNodeSchema.pre("save", function prepareBlockchainNode(next) {
   if (!this.nodeId) {
-    this.nodeId = `NODE-${Date.now()}`;
+    this.nodeId = createNodeId();
   }
 
   if (!this.timestamp) {

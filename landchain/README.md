@@ -6,6 +6,7 @@ It demonstrates:
 - Aadhaar + OTP-style mock authentication
 - land record fetching and AI summary generation
 - seller to buyer transfer workflow
+- owned properties inventory per user
 - registrar and panchayat approval flow
 - final payment confirmation
 - immutable ownership history using a MongoDB-backed linked-list blockchain model
@@ -143,6 +144,8 @@ Use two browser tabs for seller and buyer.
 
 ### 3. Seller starts transfer
 
+- Open `Properties` first to see the seller's currently owned land list
+- Open `Tax Payment` and clear any `Unpaid` tax record before attempting transfer
 - In seller account, open `Transfer`
 - Enter ULPIN: `KA-MNG-142-3B`
 - Click `Fetch Land Records`
@@ -151,6 +154,11 @@ Use two browser tabs for seller and buyer.
 - Enter buyer `userId`
 - Enter sale price
 - Click `Send Agreement to Buyer`
+
+Expected result:
+- a property record is materialized for the seller if it does not already exist
+- the property appears in the seller `Properties` section with a unique `LAND-XXXXXX` ID
+- if any tax record is still unpaid, transfer initiation is blocked and the seller receives a status notification
 
 ### 4. Buyer signs agreement
 
@@ -170,13 +178,19 @@ Use two browser tabs for seller and buyer.
 - Login with `panchayat / panchayat123`
 - Approve the transfer
 
-### 7. Seller confirms payment
+### 7. Buyer confirms payment
 
-- Go back to seller account
+- Go back to buyer account
 - Open `Transfer`
 - Find the transfer in `PAYMENT_PENDING`
 - Enter any mock UPI transaction ID
 - Click `Confirm Payment`
+
+Expected result:
+- transfer status becomes `COMPLETED`
+- the property disappears from the seller `Properties` section
+- the same property appears in the buyer `Properties` section
+- the unique `LAND-XXXXXX` ID stays the same while ownership changes
 
 ### 8. Verify blockchain
 
