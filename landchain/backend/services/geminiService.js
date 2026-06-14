@@ -56,7 +56,7 @@ async function analyzeProperty(combinedData) {
 
   try {
     const genAI = new GoogleGenerativeAI(apiKey);
-    const model = genAI.getGenerativeModel({ model: "gemini-1.5-flash" });
+    const model = genAI.getGenerativeModel({ model: "gemini-2.5-flash" });
     const prompt = `You are a property legal analyst in India. Analyze this land record
 and return a JSON object with these exact keys:
 summary (string: plain English overview),
