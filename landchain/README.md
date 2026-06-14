@@ -244,3 +244,43 @@ Expected result:
 - The frontend is verified to render locally on port `5173`.
 - The backend requires a real MongoDB Atlas URI before it can start successfully.
 - Gemini analysis has a mock fallback, so the transfer flow can still be demonstrated even without a live Gemini key.
+
+## Integrity Verification
+
+LandChain secures its title transfer logs using cryptographically verified SHA-256 block hashing and chain linkage validation. This makes any unauthorized direct database edits immediately detectable.
+
+### Centralized Hashing
+
+All block hashes are computed and verified by `backend/security/hashService.js`. Never write custom hashing algorithms elsewhere.
+
+### Hashed Fields and Ordering
+
+To generate a block's hash, LandChain constructs a deterministic input string by joining exactly these fields using a `|` separator:
+1. `nodeId`: Unique identifier for the block node.
+2. `ulpin`: Unique Land Parcel Identification Number.
+3. `POID`: Producer Owner ID (sender / seller).
+4. `COID`: Consumer Owner ID (recipient / buyer).
+5. `previousNodeId`: Cryptographic link to the preceding block. Uses `"null"` if the block is a genesis block.
+6. `timestamp`: Formatted consistently as an ISO string.
+7. `transferId`: Associated transaction ID.
+
+**Field Order is Fixed**: The ordering of these fields is static and must never change. Changing the order of fields in `buildHashInput` will invalidate all existing hashes on the ledger, causing fake tamper alerts.
+
+### Consistent Timestamps
+
+To ensure format consistency regardless of how the database returns date structures, timestamps are always converted to ISO format strings (`new Date(node.timestamp).toISOString()`) prior to hashing.
+
+### Audit Endpoints & Security Checks
+
+- **Single Node Hash Verification**: Check the cryptographic hash of an individual block node using:
+  `GET /api/blockchain/verify-node/:nodeId`
+- **Full Chain Integrity Check**: Verifies hash integrity for every block and validates linkage sequence (each block's `previousNodeId` must point to the prior block's `nodeId`).
+  `GET /api/blockchain/verify/:ulpin`
+- **System-Wide Auditing**:
+  - Audit all distinct ULPIN paths: `GET /api/blockchain/audit/all-chains`
+  - Get a formatted summary report: `GET /api/blockchain/audit/report`
+
+### What "TAMPERING DETECTED" Means
+
+If the computed hash of any node does not match its stored `blockHash`, or if a link in the block sequence is broken, the system flags `TAMPERING DETECTED`. If this occurs, inspect the compromised blocks using `GET /api/blockchain/verify/:ulpin` to find the exact altered fields, revert unauthorized edits in the database, and verify ledger signatures.
+

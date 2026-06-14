@@ -8,6 +8,7 @@ import {
   Database,
   Cpu,
   ArrowDown,
+  Loader2,
 } from "lucide-react";
 import { useEffect, useState } from "react";
 import { getUserProperties, getBlockchain, verifyBlockchain } from "../../utils/api";
@@ -48,8 +49,16 @@ export default function BlockchainExplorer({ userId }) {
           getBlockchain(selectedUlpin),
           verifyBlockchain(selectedUlpin),
         ]);
-        setChain(chainRes.data);
-        setVerification(verifyRes.data);
+        // Handle new response structure { chain, integrity } or old array structure
+        const chainData = chainRes.data && chainRes.data.chain ? chainRes.data.chain : (Array.isArray(chainRes.data) ? chainRes.data : []);
+        setChain(chainData);
+
+        const verifyData = verifyRes.data;
+        if (verifyData && !verifyData.valid && !verifyData.invalidAt) {
+          // Derives the invalid block ID from tamperedNodes or brokenLinks
+          verifyData.invalidAt = verifyData.tamperedNodes?.[0] || verifyData.brokenLinks?.[0] || "Unknown Node";
+        }
+        setVerification(verifyData);
       } catch (error) {
         toast.error("Failed to load blockchain for ULPIN: " + selectedUlpin);
         setChain([]);

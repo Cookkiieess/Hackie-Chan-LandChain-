@@ -1,5 +1,5 @@
-const crypto = require("crypto");
 const mongoose = require("mongoose");
+const hashService = require("../security/hashService");
 
 function createNodeId() {
   return `NODE-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
@@ -48,7 +48,15 @@ const blockchainNodeSchema = new mongoose.Schema({
     default: null,
     trim: true,
   },
+  hashVerifiedAt: {
+    type: Date,
+    default: null,
+  },
 });
+
+// Setup JSON/Object options to include virtuals when returning data
+blockchainNodeSchema.set("toJSON", { virtuals: true });
+blockchainNodeSchema.set("toObject", { virtuals: true });
 
 blockchainNodeSchema.pre("save", function prepareBlockchainNode(next) {
   if (this.ulpin) {
@@ -63,17 +71,14 @@ blockchainNodeSchema.pre("save", function prepareBlockchainNode(next) {
     this.timestamp = new Date();
   }
 
-  const hashInput = [
-    this.nodeId,
-    this.ulpin,
-    this.POID,
-    this.COID,
-    this.previousNodeId,
-    this.timestamp instanceof Date ? this.timestamp.toISOString() : this.timestamp,
-  ].join("");
-
-  this.blockHash = crypto.createHash("sha256").update(hashInput).digest("hex");
+  // Use the centralized hashService to compute the block hash
+  this.blockHash = hashService.computeHash(this);
   next();
+});
+
+// Virtual field: true if previousNodeId is null
+blockchainNodeSchema.virtual("isGenesisNode").get(function () {
+  return this.previousNodeId === null || this.previousNodeId === undefined || this.previousNodeId === "null";
 });
 
 module.exports = mongoose.model("BlockchainNode", blockchainNodeSchema);
