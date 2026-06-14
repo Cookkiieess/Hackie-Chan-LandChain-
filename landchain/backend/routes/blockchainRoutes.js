@@ -5,27 +5,6 @@ const verifyBlockIntegrity = require("../middleware/verifyBlockIntegrity");
 
 const router = express.Router();
 
-// Existing route updated to use verifyBlockIntegrity middleware
-router.get(
-  "/:ulpin(*)",
-  async (req, res, next) => {
-    try {
-      const chain = await getChain(req.params.ulpin);
-      res.locals.blockchainData = chain;
-      next();
-    } catch (error) {
-      res.status(500).json({ error: "Failed to fetch blockchain" });
-    }
-  },
-  verifyBlockIntegrity,
-  (req, res) => {
-    res.json({
-      chain: res.locals.blockchainData,
-      integrity: res.locals.integrity,
-    });
-  }
-);
-
 // GET /api/blockchain/verify/:ulpin
 // Runs full chain integrity checks (hash integrity & linkage checks)
 router.get("/verify/:ulpin(*)", async (req, res) => {
@@ -89,5 +68,26 @@ router.post("/admin/rehash", async (req, res) => {
     res.status(500).json({ error: "Failed to rehash blockchain nodes" });
   }
 });
+
+// Existing route updated to use verifyBlockIntegrity middleware
+router.get(
+  "/:ulpin(*)",
+  async (req, res, next) => {
+    try {
+      const chain = await getChain(req.params.ulpin);
+      res.locals.blockchainData = chain;
+      next();
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch blockchain" });
+    }
+  },
+  verifyBlockIntegrity,
+  (req, res) => {
+    res.json({
+      chain: res.locals.blockchainData,
+      integrity: res.locals.integrity,
+    });
+  }
+);
 
 module.exports = router;
