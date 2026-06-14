@@ -9,6 +9,7 @@ const transferRoutes = require("./routes/transferRoutes");
 const notificationRoutes = require("./routes/notificationRoutes");
 const blockchainRoutes = require("./routes/blockchainRoutes");
 const translateRoutes = require("./routes/translateRoutes");
+const govRoutes = require("./routes/govRoutes");
 
 dotenv.config();
 
@@ -35,6 +36,7 @@ app.use("/api/transfer", transferRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/blockchain", blockchainRoutes);
 app.use("/api/translate", translateRoutes);
+app.use("/api/gov", govRoutes);
 
 mongoose
   .connect(process.env.MONGODB_URI)

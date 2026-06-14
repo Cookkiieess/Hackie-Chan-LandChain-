@@ -363,7 +363,7 @@ export default function Transfer({ userId, prefill, clearPrefill }) {
 
     try {
       // 1. Submit split request
-      await splitProperty(combinedData.ulpin, splits.map(s => ({
+      const { data: response } = await splitProperty(combinedData.ulpin, splits.map(s => ({
         ulpin: s.ulpin.toUpperCase().trim(),
         area: s.area.trim(),
         targetBuyerUserId: s.targetBuyerUserId.toUpperCase().trim(),
@@ -387,43 +387,8 @@ export default function Transfer({ userId, prefill, clearPrefill }) {
       }
       setSurveyPhase(surveyTexts.length);
 
-      // 3. Initiate transfers for each child
-      const initiatedTxns = [];
-      for (const child of splits) {
-        const { data: initiated } = await initiateTransfer({
-          sellerUserId: userId,
-          ulpin: child.ulpin.toUpperCase().trim(),
-          agreementConditions: `Split transfer child parcel. Parent ULPIN: ${combinedData.ulpin}. ${agreementConditions}`,
-          price: Number(child.targetSalePrice),
-          buyerUserId: child.targetBuyerUserId.toUpperCase().trim(),
-          geminiSummary: {
-            summary: `This is a child parcel split from ${combinedData.ulpin}.`,
-            landDetails: {
-              area: child.area,
-              type: combinedData.revenueData.landType,
-              location: combinedData.revenueData.location,
-              surveyNumber: child.ulpin,
-            },
-            riskLevel: "LOW",
-            taxStatus: "Paid",
-            flags: []
-          },
-          flags: []
-        });
-
-        await sellerSign(initiated.transferId);
-
-        initiatedTxns.push({
-          transferId: initiated.transferId,
-          ulpin: child.ulpin.toUpperCase().trim(),
-          buyerUserId: child.targetBuyerUserId.toUpperCase().trim(),
-          price: Number(child.targetSalePrice),
-          sellerSignature: { signed: true, timestamp: new Date().toISOString() },
-          buyerSignature: { signed: false, timestamp: null }
-        });
-      }
-
-      setRecentSplitTransfers(initiatedTxns);
+      // 3. Set recent split transfers from response
+      setRecentSplitTransfers(response.transfers || []);
       toast.success("All split transfers initiated & agreements sent!");
       setStep(STEP.SPLIT_SENT);
       await loadTransfers();

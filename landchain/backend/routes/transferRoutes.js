@@ -191,20 +191,31 @@ router.post("/buyer-decline", async (req, res) => {
       return;
     }
 
-    transfer.status = "DRAFT";
+    transfer.status = "BUYER_DECLINED";
+
+    // Gather flags from Gemini and manual warnings
+    const geminiFlags = transfer.geminiSummary?.flags || [];
+    const transferFlags = transfer.flags || [];
+    const allFlags = [...new Set([...geminiFlags, ...transferFlags])];
+    
+    transfer.declineReason = allFlags.length > 0
+      ? allFlags.join("; ")
+      : "Declined by buyer due to validation verification check.";
+
     await transfer.save();
 
     await createNotification({
       userId: transfer.sellerUserId,
       type: "STATUS_UPDATE",
       title: "Buyer Declined",
-      message: "Buyer declined the agreement.",
+      message: `Buyer declined the agreement. Reason: ${transfer.declineReason}`,
       transferId: transfer.transferId,
     });
 
     return res.json({
       transferId: transfer.transferId,
       status: transfer.status,
+      declineReason: transfer.declineReason,
     });
   } catch (error) {
     return res.status(500).json({ error: "Failed to decline transfer as buyer" });
@@ -250,6 +261,7 @@ router.post("/registrar-approve", async (req, res) => {
       status: transfer.status,
     });
   } catch (error) {
+    console.error("[LandChain] registrar-approve error:", error);
     return res.status(500).json({ error: "Failed to approve transfer as registrar" });
   }
 });
