@@ -35,23 +35,84 @@ function extractJson(text) {
   }
 }
 
+function smartLocalAnalyze(combinedData) {
+  const revenue = combinedData.revenue || combinedData.revenueData || {};
+  const kaveri = combinedData.kaveri || combinedData.kaveriData || {};
+  const court = combinedData.court || combinedData.courtData || {};
+
+  const analysis = {
+    summary: "Land parcel records analyzed.",
+    previousOwners: revenue.previousOwners || [],
+    taxStatus: revenue.taxStatus || kaveri.taxStatus || "Paid up to 2024-25",
+    riskLevel: "LOW",
+    flags: [],
+    landDetails: {
+      area: revenue.area || "N/A",
+      type: revenue.landType || "Agricultural",
+      location: revenue.location || (revenue.village ? `${revenue.village}, ${revenue.taluk || ""}, ${revenue.district || ""}`.replace(/,\s*,/, ",").trim() : "N/A"),
+      surveyNumber: revenue.surveyNumber || "N/A",
+    }
+  };
+
+  const flags = [];
+  let riskLevel = "LOW";
+  let summaryParts = [];
+
+  // Check mortgage status in Sub-Registrar / Kaveri data
+  const hasMortgage = 
+    (kaveri.mortgageStatus && String(kaveri.mortgageStatus).toLowerCase() !== "clear" && String(kaveri.mortgageStatus).toLowerCase() !== "none") || 
+    (kaveri.encumbrances && String(kaveri.encumbrances).toLowerCase() !== "none" && String(kaveri.encumbrances).toLowerCase().includes("mortgage"));
+  
+  if (hasMortgage) {
+    flags.push(`Active bank mortgage encumbrance: ${kaveri.encumbrances || "Outstanding mortgage"}`);
+    riskLevel = "HIGH";
+    summaryParts.push("WARNING: Sub-Registrar registry indicates an active outstanding bank mortgage on this parcel.");
+  }
+
+  // Check court records
+  const hasLitigation = 
+    (court.litigationStatus && String(court.litigationStatus).toLowerCase() !== "clear" && String(court.litigationStatus).toLowerCase() !== "none") ||
+    (court.pendingCases && court.pendingCases.length > 0) ||
+    (court.attachmentOrders && String(court.attachmentOrders).toLowerCase() !== "none");
+
+  if (hasLitigation) {
+    const caseDesc = court.pendingCases?.[0] 
+      ? `${court.pendingCases[0].caseNumber} - ${court.pendingCases[0].description}`
+      : (court.attachmentOrders !== "None" ? court.attachmentOrders : "Pending court dispute");
+    flags.push(`Active court litigation/dispute: ${caseDesc}`);
+    riskLevel = "HIGH";
+    summaryParts.push("WARNING: Court records indicate active disputes or pending litigation on this parcel.");
+  }
+
+  // Check tax status
+  const hasUnpaidTax = 
+    (revenue.taxStatus && String(revenue.taxStatus).toLowerCase() === "unpaid") ||
+    (revenue.taxRecords && revenue.taxRecords.some(r => String(r.status).toLowerCase() === "unpaid"));
+
+  if (hasUnpaidTax) {
+    flags.push("Outstanding unpaid property taxes detected.");
+    if (riskLevel !== "HIGH") {
+      riskLevel = "MEDIUM";
+    }
+    summaryParts.push("WARNING: Gram Panchayat tax records indicate multiple years of unpaid property taxes.");
+  }
+
+  if (flags.length === 0) {
+    summaryParts.push("Property records appear clear with no active disputes, mortgages, or unpaid taxes found.");
+  }
+
+  analysis.riskLevel = riskLevel;
+  analysis.flags = flags;
+  analysis.summary = summaryParts.join(" ");
+
+  return analysis;
+}
+
 async function analyzeProperty(combinedData) {
   const apiKey = process.env.GEMINI_API_KEY;
 
   if (!apiKey) {
-    const mock = JSON.parse(JSON.stringify(MOCK_ANALYSIS));
-    if (combinedData.revenueData) {
-      const rev = combinedData.revenueData;
-      mock.previousOwners = rev.previousOwners || [];
-      mock.taxStatus = rev.taxStatus || "Paid";
-      mock.landDetails = {
-        area: rev.area || "N/A",
-        type: rev.landType || "Agricultural",
-        location: rev.location || rev.village || "N/A",
-        surveyNumber: rev.surveyNumber || "N/A",
-      };
-    }
-    return mock;
+    return smartLocalAnalyze(combinedData);
   }
 
   try {
@@ -79,21 +140,10 @@ Data: ${JSON.stringify(combinedData)}`;
 
     return extractJson(text);
   } catch (error) {
-    console.error("[LandChain] Gemini API error, falling back to mock analysis:", error.message);
-    const mock = JSON.parse(JSON.stringify(MOCK_ANALYSIS));
-    if (combinedData.revenueData) {
-      const rev = combinedData.revenueData;
-      mock.previousOwners = rev.previousOwners || [];
-      mock.taxStatus = rev.taxStatus || "Paid";
-      mock.landDetails = {
-        area: rev.area || "N/A",
-        type: rev.landType || "Agricultural",
-        location: rev.location || rev.village || "N/A",
-        surveyNumber: rev.surveyNumber || "N/A",
-      };
-    }
-    return mock;
+    console.error("[LandChain] Gemini API error, falling back to smart local analysis:", error.message);
+    return smartLocalAnalyze(combinedData);
   }
 }
 
 module.exports = { analyzeProperty };
+
