@@ -7,6 +7,8 @@ const {
   createGenesisNode,
   createTransferNode,
   getChain,
+  getOwnershipHistory,
+  getUlpinVariants,
 } = require("../services/blockchainService");
 
 const router = express.Router();
@@ -46,7 +48,8 @@ router.post("/initiate", async (req, res) => {
       flags,
     } = req.body;
 
-    const property = await Property.findOne({ ulpin });
+    const variants = getUlpinVariants(ulpin);
+    const property = await Property.findOne({ ulpin: { $in: variants } });
 
     if (!property) {
       return res.status(404).json({ error: "Property record not found. Fetch the property first." });
@@ -401,7 +404,8 @@ router.post("/payment", async (req, res) => {
       return res.status(400).json({ error: "Transfer is not ready for payment." });
     }
 
-    let property = await Property.findOne({ ulpin: transfer.ulpin });
+    const variants = getUlpinVariants(transfer.ulpin);
+    let property = await Property.findOne({ ulpin: { $in: variants } });
 
     if (!property) {
       property = await Property.create({
@@ -463,10 +467,35 @@ router.post("/payment", async (req, res) => {
   }
 });
 
+async function enrichTransfer(transferDoc) {
+  if (!transferDoc) return null;
+  const transfer = transferDoc.toObject ? transferDoc.toObject() : transferDoc;
+  try {
+    const { previousOwners } = await getOwnershipHistory(transfer.ulpin);
+    if (!transfer.geminiSummary) {
+      transfer.geminiSummary = {};
+    }
+    transfer.geminiSummary.previousOwners = previousOwners;
+  } catch (error) {
+    console.error("[LandChain] Error enriching transfer:", error.message);
+  }
+  return transfer;
+}
+
+async function enrichTransfers(transferDocs) {
+  const enriched = [];
+  for (const doc of transferDocs) {
+    const tr = await enrichTransfer(doc);
+    enriched.push(tr);
+  }
+  return enriched;
+}
+
 router.get("/", async (req, res) => {
   try {
     const transfers = await Transfer.find().sort({ createdAt: -1 });
-    return res.json(transfers);
+    const enriched = await enrichTransfers(transfers);
+    return res.json(enriched);
   } catch (error) {
     return res.status(500).json({ error: "Failed to fetch transfers" });
   }
@@ -479,7 +508,8 @@ router.get("/user/:userId", async (req, res) => {
       $or: [{ sellerUserId: userId }, { buyerUserId: userId }],
     }).sort({ createdAt: -1 });
 
-    return res.json(transfers);
+    const enriched = await enrichTransfers(transfers);
+    return res.json(enriched);
   } catch (error) {
     return res.status(500).json({ error: "Failed to fetch user transfers" });
   }
@@ -493,7 +523,8 @@ router.get("/:id", async (req, res) => {
       return res.status(404).json({ error: "Transfer not found" });
     }
 
-    return res.json(transfer);
+    const enriched = await enrichTransfer(transfer);
+    return res.json(enriched);
   } catch (error) {
     return res.status(500).json({ error: "Failed to fetch transfer" });
   }

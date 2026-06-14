@@ -5,6 +5,7 @@ import Inbox from "../components/sections/Inbox";
 import Properties from "../components/sections/Properties";
 import TaxPayment from "../components/sections/TaxPayment";
 import Transfer from "../components/sections/Transfer";
+import BlockchainExplorer from "../components/sections/BlockchainExplorer";
 
 const mobileSections = [
   { key: "inbox", label: "Inbox" },
@@ -12,23 +13,39 @@ const mobileSections = [
   { key: "transfer", label: "Transfer" },
   { key: "deedDraft", label: "Deed Draft" },
   { key: "taxPayment", label: "Tax Payment" },
+  { key: "blockchain", label: "Blockchain" },
 ];
 
 export default function HomePage() {
   const [activeSection, setActiveSection] = useState("inbox");
+  const [transferPrefill, setTransferPrefill] = useState(null);
   const userId = sessionStorage.getItem("userId") || "";
   const userName = sessionStorage.getItem("name") || "LandChain User";
 
   const sectionContent = useMemo(() => {
     switch (activeSection) {
       case "properties":
-        return <Properties userId={userId} />;
+        return (
+          <Properties
+            userId={userId}
+            setActiveSection={setActiveSection}
+            setTransferPrefill={setTransferPrefill}
+          />
+        );
       case "transfer":
-        return <Transfer userId={userId} />;
+        return (
+          <Transfer
+            userId={userId}
+            prefill={transferPrefill}
+            clearPrefill={() => setTransferPrefill(null)}
+          />
+        );
       case "deedDraft":
         return <DeedDraft userId={userId} />;
       case "taxPayment":
         return <TaxPayment userId={userId} />;
+      case "blockchain":
+        return <BlockchainExplorer userId={userId} />;
       case "inbox":
       default:
         return <Inbox userId={userId} />;

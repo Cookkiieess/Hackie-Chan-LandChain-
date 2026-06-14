@@ -15,6 +15,7 @@ const navItems = [
   { key: "transfer", label: "Transfer", icon: ArrowRightLeft },
   { key: "deedDraft", label: "Deed Draft", icon: FileText },
   { key: "taxPayment", label: "Tax Payment", icon: Receipt },
+  { key: "blockchain", label: "Blockchain Explorer", icon: LinkIcon },
 ];
 
 export default function Sidebar({ activeSection, setActiveSection, userName, userId }) {

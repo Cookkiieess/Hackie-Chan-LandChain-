@@ -65,6 +65,28 @@ const propertySchema = new mongoose.Schema({
     type: [taxRecordSchema],
     default: [],
   },
+  isDivided: {
+    type: Boolean,
+    default: false,
+  },
+  parentUlpin: {
+    type: String,
+    default: null,
+    trim: true,
+  },
+  dividedChildUlpins: {
+    type: [String],
+    default: [],
+  },
+  targetBuyerUserId: {
+    type: String,
+    default: null,
+    trim: true,
+  },
+  targetSalePrice: {
+    type: Number,
+    default: 0,
+  },
   createdAt: {
     type: Date,
     default: Date.now,
@@ -88,6 +110,7 @@ propertySchema.pre("save", async function prepareProperty(next) {
   }
 
   if (this.ulpin) {
+    this.ulpin = this.ulpin.toUpperCase().trim();
     this.internalCode = `LC-${this.ulpin}`;
   }
 

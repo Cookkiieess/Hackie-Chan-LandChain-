@@ -40,8 +40,16 @@ async function analyzeProperty(combinedData) {
 
   if (!apiKey) {
     const mock = JSON.parse(JSON.stringify(MOCK_ANALYSIS));
-    if (combinedData.revenueData?.previousOwners) {
-      mock.previousOwners = combinedData.revenueData.previousOwners;
+    if (combinedData.revenueData) {
+      const rev = combinedData.revenueData;
+      mock.previousOwners = rev.previousOwners || [];
+      mock.taxStatus = rev.taxStatus || "Paid";
+      mock.landDetails = {
+        area: rev.area || "N/A",
+        type: rev.landType || "Agricultural",
+        location: rev.location || rev.village || "N/A",
+        surveyNumber: rev.surveyNumber || "N/A",
+      };
     }
     return mock;
   }
@@ -66,9 +74,18 @@ Data: ${JSON.stringify(combinedData)}`;
 
     return extractJson(text);
   } catch (error) {
+    console.error("[LandChain] Gemini API error, falling back to mock analysis:", error.message);
     const mock = JSON.parse(JSON.stringify(MOCK_ANALYSIS));
-    if (combinedData.revenueData?.previousOwners) {
-      mock.previousOwners = combinedData.revenueData.previousOwners;
+    if (combinedData.revenueData) {
+      const rev = combinedData.revenueData;
+      mock.previousOwners = rev.previousOwners || [];
+      mock.taxStatus = rev.taxStatus || "Paid";
+      mock.landDetails = {
+        area: rev.area || "N/A",
+        type: rev.landType || "Agricultural",
+        location: rev.location || rev.village || "N/A",
+        surveyNumber: rev.surveyNumber || "N/A",
+      };
     }
     return mock;
   }

@@ -8,6 +8,10 @@ import {
   Scale,
   Sparkles,
   CheckCircle2,
+  Plus,
+  Trash2,
+  ShieldCheck,
+  GitFork,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import toast from "react-hot-toast";
@@ -18,6 +22,7 @@ import {
   getUserTransfers,
   initiateTransfer,
   sellerSign,
+  splitProperty,
 } from "../../utils/api";
 import { generateSaleDeed } from "../../utils/generateDeed";
 import ProgressTracker from "../shared/ProgressTracker";
@@ -27,7 +32,9 @@ const STEP = {
   FETCHING: "FETCHING",
   OVERVIEW: "OVERVIEW",
   BUYER_DETAILS: "BUYER_DETAILS",
+  SURVEYING: "SURVEYING",
   SENT: "SENT",
+  SPLIT_SENT: "SPLIT_SENT",
 };
 
 function formatCurrency(amount) {
@@ -128,12 +135,12 @@ const SUPPORTED_LANGUAGES = [
   { code: "te-IN", name: "Telugu (తెలుగు)" },
   { code: "ta-IN", name: "Tamil (தமிழ்)" },
   { code: "ml-IN", name: "Malayalam (മലയാളം)" },
-  { code: "mr-IN", name: "Marathi (मराठी)" },
+  { code: "mr-IN", name: "Marathi (ಮರಾठी)" },
   { code: "bn-IN", name: "Bengali (বাংলা)" },
   { code: "gu-IN", name: "Gujarati (ગુજરાતી)" },
 ];
 
-export default function Transfer({ userId }) {
+export default function Transfer({ userId, prefill, clearPrefill }) {
   const [step, setStep] = useState(STEP.ULPIN_ENTRY);
   const [ulpin, setUlpin] = useState("");
   const [agreementConditions, setAgreementConditions] = useState("");
@@ -150,6 +157,13 @@ export default function Transfer({ userId }) {
   const [recentSignedTransfer, setRecentSignedTransfer] = useState(null);
   const [sellerLang, setSellerLang] = useState("en-IN");
   const [historyLangs, setHistoryLangs] = useState({});
+
+  // Split Transfer State
+  const [transferMode, setTransferMode] = useState("single"); // "single" or "split"
+  const [splits, setSplits] = useState([]);
+  const [recentSplitTransfers, setRecentSplitTransfers] = useState([]);
+  const [surveyPhase, setSurveyPhase] = useState(0);
+  const [splitLangs, setSplitLangs] = useState({});
 
   const visibleTransfers = useMemo(
     () =>
@@ -171,6 +185,84 @@ export default function Transfer({ userId }) {
   useEffect(() => {
     loadTransfers();
   }, [userId]);
+
+  // Handle Prefill state from Divided Properties
+  useEffect(() => {
+    if (prefill) {
+      setUlpin(prefill.ulpin);
+      setBuyerUserId(prefill.buyerUserId || "");
+      setPrice(prefill.price || "");
+      setTransferMode("single");
+
+      const triggerPrefillFetch = async () => {
+        setFetchError("");
+        setStep(STEP.FETCHING);
+        setLoadingPhase(0);
+
+        const loadingSequence = [1, 2, 3, 4];
+        loadingSequence.forEach((value, index) => {
+          setTimeout(() => setLoadingPhase(value), index * 300);
+        });
+
+        try {
+          const { data: fetched } = await fetchProperty(prefill.ulpin, userId);
+          const analyzePayload = {
+            revenue: fetched.revenueData,
+            kaveri: fetched.kaveriData,
+            court: fetched.courtData,
+          };
+          const { data: analysis } = await analyzeProperty(prefill.ulpin, analyzePayload);
+          setCombinedData(fetched);
+          setGeminiSummary(analysis.geminiSummary);
+          setStep(STEP.OVERVIEW);
+        } catch (error) {
+          toast.error("Failed to fetch prefilled property");
+          setStep(STEP.ULPIN_ENTRY);
+        }
+      };
+
+      triggerPrefillFetch();
+      clearPrefill();
+    }
+  }, [prefill, userId, clearPrefill]);
+
+  // Initialize splits when combinedData loads based on registry divisions
+  useEffect(() => {
+    if (combinedData && combinedData.revenueData?.divisions) {
+      setSplits(
+        combinedData.revenueData.divisions.map((d) => ({
+          ulpin: d.ulpin,
+          area: d.area,
+          targetBuyerUserId: "",
+          targetSalePrice: "",
+        }))
+      );
+    } else {
+      setSplits([]);
+    }
+  }, [combinedData]);
+
+  const addSplit = () => {
+    const nextLetter = String.fromCharCode(65 + splits.length);
+    setSplits([
+      ...splits,
+      { ulpin: `${combinedData.ulpin}/${nextLetter}`, area: "", targetBuyerUserId: "", targetSalePrice: "" }
+    ]);
+  };
+
+  const removeSplit = (index) => {
+    if (splits.length <= 2) {
+      toast.error("A split transfer requires at least 2 child parcels.");
+      return;
+    }
+    setSplits(splits.filter((_, i) => i !== index));
+  };
+
+  const handleSplitChange = (index, field, value) => {
+    setSplits(
+      splits.map((s, i) => (i === index ? { ...s, [field]: value } : s))
+    );
+  };
 
   const handleFetch = async () => {
     if (!ulpin.trim()) {
@@ -221,7 +313,7 @@ export default function Transfer({ userId }) {
         ulpin: combinedData.ulpin,
         agreementConditions,
         price: Number(price),
-        buyerUserId,
+        buyerUserId: buyerUserId.toUpperCase().trim(),
         geminiSummary,
         flags: geminiSummary?.flags || [],
       });
@@ -231,7 +323,7 @@ export default function Transfer({ userId }) {
         status: "SENT",
         ulpin: combinedData.ulpin,
         sellerUserId: userId,
-        buyerUserId,
+        buyerUserId: buyerUserId.toUpperCase().trim(),
         price: Number(price),
         agreementConditions,
         geminiSummary,
@@ -251,6 +343,93 @@ export default function Transfer({ userId }) {
       await loadTransfers();
     } catch (error) {
       toast.error(error.response?.data?.error || "Failed to send agreement");
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleSendSplitTransfer = async (e) => {
+    e.preventDefault();
+    for (const s of splits) {
+      if (!s.ulpin.trim() || !s.area.trim() || !s.targetBuyerUserId.trim() || !s.targetSalePrice || Number(s.targetSalePrice) <= 0) {
+        toast.error("Please fill in all details for all split parcels.");
+        return;
+      }
+    }
+
+    setSubmitting(true);
+    setStep(STEP.SURVEYING);
+    setSurveyPhase(0);
+
+    try {
+      // 1. Submit split request
+      await splitProperty(combinedData.ulpin, splits.map(s => ({
+        ulpin: s.ulpin.toUpperCase().trim(),
+        area: s.area.trim(),
+        targetBuyerUserId: s.targetBuyerUserId.toUpperCase().trim(),
+        targetSalePrice: Number(s.targetSalePrice)
+      })));
+
+      toast.success("Survey request registered! Starting boundary verification...");
+
+      // 2. Animate 5-second survey delay
+      const surveyTexts = [
+        "Revenue Department notified of division request...",
+        "Assigned surveyor checking parcel coordinates...",
+        "Verifying boundary limits & area distribution...",
+        "Generating unique land codes & child blockchain blocks...",
+        "Verification complete! Creating digital agreements..."
+      ];
+
+      for (let i = 0; i < surveyTexts.length; i++) {
+        setSurveyPhase(i);
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      setSurveyPhase(surveyTexts.length);
+
+      // 3. Initiate transfers for each child
+      const initiatedTxns = [];
+      for (const child of splits) {
+        const { data: initiated } = await initiateTransfer({
+          sellerUserId: userId,
+          ulpin: child.ulpin.toUpperCase().trim(),
+          agreementConditions: `Split transfer child parcel. Parent ULPIN: ${combinedData.ulpin}. ${agreementConditions}`,
+          price: Number(child.targetSalePrice),
+          buyerUserId: child.targetBuyerUserId.toUpperCase().trim(),
+          geminiSummary: {
+            summary: `This is a child parcel split from ${combinedData.ulpin}.`,
+            landDetails: {
+              area: child.area,
+              type: combinedData.revenueData.landType,
+              location: combinedData.revenueData.location,
+              surveyNumber: child.ulpin,
+            },
+            riskLevel: "LOW",
+            taxStatus: "Paid",
+            flags: []
+          },
+          flags: []
+        });
+
+        await sellerSign(initiated.transferId);
+
+        initiatedTxns.push({
+          transferId: initiated.transferId,
+          ulpin: child.ulpin.toUpperCase().trim(),
+          buyerUserId: child.targetBuyerUserId.toUpperCase().trim(),
+          price: Number(child.targetSalePrice),
+          sellerSignature: { signed: true, timestamp: new Date().toISOString() },
+          buyerSignature: { signed: false, timestamp: null }
+        });
+      }
+
+      setRecentSplitTransfers(initiatedTxns);
+      toast.success("All split transfers initiated & agreements sent!");
+      setStep(STEP.SPLIT_SENT);
+      await loadTransfers();
+    } catch (error) {
+      toast.error(error.response?.data?.error || "Failed during split transfer flow");
+      setStep(STEP.OVERVIEW);
     } finally {
       setSubmitting(false);
     }
@@ -320,6 +499,39 @@ export default function Transfer({ userId }) {
         },
       }, sellerLang);
       toast.success("Sale Deed downloaded successfully", { id: loadingToastId });
+    } catch (error) {
+      toast.error("Failed to generate Sale Deed", { id: loadingToastId });
+    }
+  };
+
+  const handleDownloadSplitCopy = async (transfer, lang) => {
+    const loadingToastId = toast.loading(`Generating Sale Deed for ${transfer.ulpin}...`);
+    try {
+      await generateSaleDeed(transfer, {
+        seller: {
+          name: sessionStorage.getItem("name") || transfer.sellerUserId,
+          userId,
+          timestamp: transfer.sellerSignature?.timestamp,
+          signed: true,
+        },
+        buyer: {
+          name: transfer.buyerUserId,
+          userId: transfer.buyerUserId,
+          timestamp: null,
+          signed: false,
+        },
+        registrar: {
+          name: "Registrar Officer",
+          timestamp: null,
+          signed: false,
+        },
+        panchayat: {
+          name: "Panchayat Officer",
+          timestamp: null,
+          signed: false,
+        },
+      }, lang);
+      toast.success(`Draft Deed for ${transfer.ulpin} downloaded`, { id: loadingToastId });
     } catch (error) {
       toast.error("Failed to generate Sale Deed", { id: loadingToastId });
     }
@@ -464,6 +676,38 @@ export default function Transfer({ userId }) {
               <p className="font-semibold">{riskBanner.text}</p>
             </div>
 
+            {/* Transfer Mode Toggle */}
+            <div className="rounded-[24px] border border-slate-200 bg-white p-6">
+              <h2 className="text-lg font-semibold text-slate-900">Transfer Workflow Mode</h2>
+              <p className="text-sm text-slate-500 mt-1">
+                Choose to transfer the whole parcel or split it first and transfer parts to multiple buyers.
+              </p>
+              <div className="flex gap-4 mt-4">
+                <button
+                  type="button"
+                  onClick={() => setTransferMode("single")}
+                  className={`flex-1 py-3 px-4 rounded-xl font-semibold border transition text-sm ${
+                    transferMode === "single"
+                      ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  Standard (Single Transfer)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setTransferMode("split")}
+                  className={`flex-1 py-3 px-4 rounded-xl font-semibold border transition text-sm ${
+                    transferMode === "split"
+                      ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                      : "border-slate-200 text-slate-600 hover:bg-slate-50"
+                  }`}
+                >
+                  Split Transfer (Multiple Buyers)
+                </button>
+              </div>
+            </div>
+
             <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
               <div className="space-y-6">
                 <div className="rounded-[24px] border border-slate-200 bg-white p-6">
@@ -503,26 +747,122 @@ export default function Transfer({ userId }) {
                   </div>
                 ) : null}
 
-                <div className="rounded-[24px] border border-slate-200 bg-white p-6">
-                  <h2 className="text-lg font-semibold text-slate-900">Agreement Conditions</h2>
-                  <textarea
-                    rows={4}
-                    value={agreementConditions}
-                    onChange={(event) => setAgreementConditions(event.target.value)}
-                    placeholder="e.g. Property to be handed over vacant, no pending dues..."
-                    className="mt-4 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-emerald-500"
-                  />
-                  <div className="mt-4 flex justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setStep(STEP.BUYER_DETAILS)}
-                      className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-white transition hover:bg-emerald-600"
-                    >
-                      Proceed
-                      <ArrowRight className="h-4 w-4" />
-                    </button>
+                {/* Workflow specific forms */}
+                {transferMode === "single" ? (
+                  <div className="rounded-[24px] border border-slate-200 bg-white p-6">
+                    <h2 className="text-lg font-semibold text-slate-900">Agreement Conditions</h2>
+                    <textarea
+                      rows={4}
+                      value={agreementConditions}
+                      onChange={(event) => setAgreementConditions(event.target.value)}
+                      placeholder="e.g. Property to be handed over vacant, no pending dues..."
+                      className="mt-4 w-full rounded-2xl border border-slate-200 px-4 py-3 outline-none focus:border-emerald-500"
+                    />
+                    <div className="mt-4 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => setStep(STEP.BUYER_DETAILS)}
+                        className="inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-5 py-3 font-semibold text-white transition hover:bg-emerald-600"
+                      >
+                        Proceed
+                        <ArrowRight className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                </div>
+                ) : !combinedData?.revenueData?.divisions || combinedData.revenueData.divisions.length < 2 ? (
+                  // Divisions not present
+                  <div className="rounded-[24px] border border-red-200 bg-red-50 p-6 text-center text-red-700">
+                    <AlertTriangle className="h-8 w-8 mx-auto text-red-500 mb-2" />
+                    <h3 className="font-bold text-lg">Split Transfer Unavailable</h3>
+                    <p className="text-sm mt-2 leading-relaxed">
+                      This property does not have approved sub-divisions in the government registry database. A government survey must be conducted to divide the property before you can sell its parts.
+                    </p>
+                  </div>
+                ) : (
+                  // Split Transfer Form
+                  <div className="rounded-[24px] border border-slate-200 bg-white p-6 space-y-4">
+                    <div>
+                      <h2 className="text-lg font-semibold text-slate-900">Configure Predefined Split Parcels</h2>
+                      <p className="text-sm text-slate-500">Specify buyer IDs and prices for the predefined sub-divisions.</p>
+                    </div>
+
+                    <div className="space-y-4 max-h-[40vh] overflow-y-auto pr-2">
+                      {splits.map((split, index) => (
+                        <div key={index} className="rounded-2xl border border-slate-200 p-4 space-y-3 bg-slate-50 relative">
+                          <div className="flex items-center justify-between">
+                            <span className="text-sm font-semibold text-slate-700">Parcel #{index + 1} (Predefined)</span>
+                          </div>
+
+                          <div className="grid gap-3 sm:grid-cols-2">
+                            <div>
+                              <label className="block text-xs font-medium text-slate-500 mb-1">New ULPIN</label>
+                              <input
+                                type="text"
+                                required
+                                readOnly
+                                value={split.ulpin}
+                                className="w-full rounded-lg border border-slate-200 bg-slate-100 cursor-not-allowed px-3 py-2 text-xs outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-slate-500 mb-1">Area</label>
+                              <input
+                                type="text"
+                                required
+                                readOnly
+                                value={split.area}
+                                className="w-full rounded-lg border border-slate-200 bg-slate-100 cursor-not-allowed px-3 py-2 text-xs outline-none"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-slate-500 mb-1">Buyer User ID</label>
+                              <input
+                                type="text"
+                                required
+                                value={split.targetBuyerUserId}
+                                onChange={(e) => handleSplitChange(index, "targetBuyerUserId", e.target.value.toUpperCase())}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-emerald-500"
+                              />
+                            </div>
+                            <div>
+                              <label className="block text-xs font-medium text-slate-500 mb-1">Sale Price (Rs.)</label>
+                              <input
+                                type="number"
+                                required
+                                value={split.targetSalePrice}
+                                onChange={(e) => handleSplitChange(index, "targetSalePrice", e.target.value)}
+                                className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-xs outline-none focus:border-emerald-500"
+                              />
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    <div className="rounded-[20px] bg-slate-50 p-4">
+                      <label className="block text-sm font-medium text-slate-700 mb-2">Agreement Conditions (Applies to all splits)</label>
+                      <textarea
+                        rows={3}
+                        value={agreementConditions}
+                        onChange={(event) => setAgreementConditions(event.target.value)}
+                        placeholder="e.g. Properties to be handed over vacant..."
+                        className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm outline-none bg-white focus:border-emerald-500"
+                      />
+                    </div>
+
+                    <div className="flex justify-end items-center border-t border-slate-100 pt-4">
+                      <button
+                        type="button"
+                        onClick={handleSendSplitTransfer}
+                        disabled={submitting}
+                        className="flex items-center gap-2 rounded-xl bg-emerald-500 px-6 py-2.5 text-sm font-semibold text-white hover:bg-emerald-600 disabled:opacity-75 transition"
+                      >
+                        {submitting && <Loader2 className="h-4 w-4 animate-spin" />}
+                        Initiate Split Transfer
+                      </button>
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="space-y-6">
@@ -640,6 +980,50 @@ export default function Transfer({ userId }) {
           </div>
         ) : null}
 
+        {step === STEP.SURVEYING ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center max-w-xl mx-auto">
+            <Loader2 className="h-16 w-16 animate-spin text-emerald-500" />
+            <h3 className="mt-6 text-2xl font-bold text-slate-900">Simulating Government Survey</h3>
+            <p className="mt-2 max-w-md text-sm text-slate-500">
+              The Revenue Department is verifying boundary limits and assigning surveyors.
+            </p>
+
+            <div className="mt-8 w-full space-y-3">
+              {[
+                "Revenue Department notified of division request...",
+                "Assigned surveyor checking parcel coordinates...",
+                "Verifying boundary limits & area distribution...",
+                "Generating unique land codes & child blockchain blocks...",
+                "Verification complete! Creating digital agreements..."
+              ].map((phase, idx) => (
+                <div
+                  key={phase}
+                  className={`flex items-center gap-3 rounded-2xl border p-4 text-left transition ${
+                    surveyPhase > idx
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      : surveyPhase === idx
+                      ? "border-amber-200 bg-amber-50 text-amber-800 animate-pulse"
+                      : "border-slate-100 bg-slate-50 text-slate-400"
+                  }`}
+                >
+                  <div
+                    className={`h-6 w-6 rounded-full flex items-center justify-center text-xs font-semibold ${
+                      surveyPhase > idx
+                        ? "bg-emerald-500 text-white"
+                        : surveyPhase === idx
+                        ? "bg-amber-500 text-white"
+                        : "bg-slate-200 text-slate-500"
+                    }`}
+                  >
+                    {idx + 1}
+                  </div>
+                  <span className="text-sm font-semibold">{phase}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
+
         {step === STEP.SENT ? (
           <div className="flex min-h-[420px] flex-col items-center justify-center text-center">
             <div className="flex h-24 w-24 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 animate-pulse">
@@ -671,6 +1055,64 @@ export default function Transfer({ userId }) {
                 </button>
               </div>
             ) : null}
+          </div>
+        ) : null}
+
+        {step === STEP.SPLIT_SENT ? (
+          <div className="flex flex-col items-center justify-center py-12 text-center max-w-3xl mx-auto">
+            <div className="flex h-20 w-20 items-center justify-center rounded-full bg-emerald-100 text-emerald-600 animate-bounce">
+              <ShieldCheck className="h-10 w-10" />
+            </div>
+            <h1 className="mt-6 text-3xl font-bold text-slate-900">Split Transfers Initiated</h1>
+            <p className="mt-2 text-sm text-slate-500">
+              The parent land parcel has been split on the blockchain DAG. Agreements have been signed by you and sent to their buyers.
+            </p>
+
+            <div className="mt-8 w-full space-y-4 text-left">
+              <h3 className="font-semibold text-slate-905 text-base">Initiated Deeds & Drafts</h3>
+              {recentSplitTransfers.map((t) => {
+                const selectedLang = splitLangs[t.transferId] || "en-IN";
+                return (
+                  <div key={t.transferId} className="flex flex-wrap items-center justify-between gap-4 p-5 rounded-2xl border border-slate-200 bg-slate-50">
+                    <div>
+                      <p className="font-semibold text-slate-800">ULPIN: {t.ulpin}</p>
+                      <p className="text-xs text-slate-500">Buyer: {t.buyerUserId} | Price: Rs. {new Intl.NumberFormat("en-IN").format(t.price)}</p>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <select
+                        value={selectedLang}
+                        onChange={(e) => setSplitLangs(prev => ({ ...prev, [t.transferId]: e.target.value }))}
+                        className="rounded-xl border border-slate-300 bg-white px-3 py-2 text-xs font-semibold text-slate-700 outline-none"
+                      >
+                        {SUPPORTED_LANGUAGES.map((lang) => (
+                          <option key={lang.code} value={lang.code}>
+                            {lang.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={() => handleDownloadSplitCopy(t, selectedLang)}
+                        className="bg-slate-900 hover:bg-slate-800 text-white font-semibold text-xs py-2 px-4 rounded-xl transition"
+                      >
+                        Download Copy
+                      </button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            <button
+              onClick={() => {
+                setStep(STEP.ULPIN_ENTRY);
+                setUlpin("");
+                setCombinedData(null);
+                setGeminiSummary(null);
+              }}
+              className="mt-8 inline-flex items-center gap-2 rounded-2xl bg-emerald-500 px-6 py-3 font-semibold text-white transition hover:bg-emerald-600"
+            >
+              Start Another Transfer
+            </button>
           </div>
         ) : null}
       </div>
@@ -721,7 +1163,7 @@ export default function Transfer({ userId }) {
                         value={historyLangs[transfer.transferId] || "en-IN"}
                         onChange={(e) =>
                           setHistoryLangs((current) => ({
-                            current,
+                            ...current,
                             [transfer.transferId]: e.target.value,
                           }))
                         }
