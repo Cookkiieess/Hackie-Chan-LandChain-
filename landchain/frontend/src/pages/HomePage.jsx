@@ -6,6 +6,7 @@ import Properties from "../components/sections/Properties";
 import TaxPayment from "../components/sections/TaxPayment";
 import Transfer from "../components/sections/Transfer";
 import BlockchainExplorer from "../components/sections/BlockchainExplorer";
+import VoiceAssistantWidget from "../components/shared/VoiceAssistantWidget";
 
 const mobileSections = [
   { key: "inbox", label: "Inbox" },
@@ -81,6 +82,7 @@ export default function HomePage() {
           {sectionContent}
         </div>
       </main>
+      <VoiceAssistantWidget />
     </div>
   );
 }
