@@ -18,3 +18,90 @@ input,
 textarea {
   font: inherit;
 }
+
+/* Voice Assistant Visualizer Orb */
+.voice-orb {
+  position: relative;
+  display: grid;
+  width: 120px;
+  height: 120px;
+  place-items: center;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 38% 32%, #ffffff 0 8%, transparent 10%),
+    radial-gradient(circle at 50% 50%, #10b981 0 38%, #059669 68%, #064e3b 100%);
+  box-shadow:
+    inset -8px -12px 20px rgba(0, 0, 0, 0.3),
+    0 10px 25px rgba(16, 185, 129, 0.35);
+  transition: all 0.3s ease;
+}
+
+.voice-orb.listening {
+  background:
+    radial-gradient(circle at 38% 32%, #ffffff 0 8%, transparent 10%),
+    radial-gradient(circle at 50% 50%, #ef4444 0 38%, #dc2626 68%, #7f1d1d 100%);
+  box-shadow:
+    inset -8px -12px 20px rgba(0, 0, 0, 0.3),
+    0 10px 25px rgba(239, 68, 68, 0.5);
+}
+
+.voice-orb.thinking {
+  animation: orb-spin 2s linear infinite;
+  background:
+    radial-gradient(circle at 38% 32%, #ffffff 0 8%, transparent 10%),
+    radial-gradient(circle at 50% 50%, #3b82f6 0 38%, #2563eb 68%, #1e3a8a 100%);
+  box-shadow:
+    inset -8px -12px 20px rgba(0, 0, 0, 0.3),
+    0 10px 25px rgba(59, 130, 246, 0.5);
+}
+
+@keyframes orb-spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.voice-orb span {
+  position: absolute;
+  width: 58%;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.95);
+  transform: scaleX(0.35);
+  transition: transform 180ms ease, opacity 180ms ease;
+}
+
+.voice-orb span:nth-child(1) {
+  --offset: -16px;
+  transform: translateY(-16px) scaleX(0.45);
+}
+
+.voice-orb span:nth-child(2) {
+  --offset: 0px;
+}
+
+.voice-orb span:nth-child(3) {
+  --offset: 16px;
+  transform: translateY(16px) scaleX(0.55);
+}
+
+.voice-orb.listening span:nth-child(1) {
+  animation: voice-wave-anim 850ms ease-in-out infinite;
+}
+
+.voice-orb.listening span:nth-child(2) {
+  animation: voice-wave-anim 850ms 120ms ease-in-out infinite;
+}
+
+.voice-orb.listening span:nth-child(3) {
+  animation: voice-wave-anim 850ms 240ms ease-in-out infinite;
+}
+
+@keyframes voice-wave-anim {
+  0%, 100% {
+    transform: translateY(var(--offset, 0)) scaleX(0.32);
+  }
+  50% {
+    transform: translateY(var(--offset, 0)) scaleX(0.92);
+  }
+}
+
