@@ -108,6 +108,36 @@ export default function ProgressTracker({ transfer }) {
         </div>
       </div>
 
+      {transfer.geminiSummary && (
+        <div className="mt-6 border-t border-slate-100 pt-6 space-y-3">
+          <div className="rounded-[24px] border border-slate-200 p-5 bg-slate-50/50">
+            <h3 className="text-base font-semibold text-slate-905 flex items-center gap-2">
+              <span>Gemini AI Verification Report</span>
+              <span className={`inline-flex rounded-full px-2.5 py-0.5 text-xs font-semibold ${
+                transfer.geminiSummary.riskLevel === "HIGH" 
+                  ? "bg-red-100 text-red-700" 
+                  : transfer.geminiSummary.riskLevel === "MEDIUM" 
+                  ? "bg-amber-100 text-amber-700" 
+                  : "bg-emerald-100 text-emerald-700"
+              }`}>
+                {transfer.geminiSummary.riskLevel || "LOW"} Risk
+              </span>
+            </h3>
+            <p className="mt-3 text-sm leading-6 text-slate-600">{transfer.geminiSummary.summary}</p>
+          </div>
+          
+          {transfer.geminiSummary.flags?.length ? (
+            <div className="space-y-2">
+              {transfer.geminiSummary.flags.map((flag) => (
+                <div key={flag} className="rounded-[20px] border border-amber-200 bg-amber-50/70 p-4 text-xs font-medium text-amber-800">
+                  ⚠️ {flag}
+                </div>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      )}
+
       <div className="mt-8 grid gap-3">
         <div className="flex items-center justify-between rounded-2xl bg-slate-50 px-4 py-3">
           <span className="text-sm font-medium text-slate-600">Sub-Registrar</span>

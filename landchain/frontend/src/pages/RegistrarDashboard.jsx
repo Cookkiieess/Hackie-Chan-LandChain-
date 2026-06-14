@@ -267,15 +267,29 @@ export default function RegistrarDashboard() {
               <div className="rounded-[24px] border border-slate-200 p-5">
                 <h3 className="text-lg font-semibold text-slate-900">AI Analysis Report</h3>
                 <p className="mt-3 text-sm leading-7 text-slate-600">{transfer.geminiSummary?.summary}</p>
-                <div className="mt-4 inline-flex rounded-full bg-emerald-100 px-3 py-1 text-sm font-semibold text-emerald-700">
+                <div className={`mt-4 inline-flex rounded-full px-3 py-1 text-sm font-semibold ${
+                  transfer.geminiSummary?.riskLevel === "HIGH"
+                    ? "bg-red-100 text-red-700"
+                    : transfer.geminiSummary?.riskLevel === "MEDIUM"
+                    ? "bg-amber-100 text-amber-700"
+                    : "bg-emerald-100 text-emerald-700"
+                }`}>
                   {transfer.geminiSummary?.riskLevel || "LOW"} Risk
                 </div>
               </div>
 
               {transfer.geminiSummary?.flags?.length ? (
                 transfer.geminiSummary.flags.map((flag) => (
-                  <div key={flag} className="rounded-[20px] border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                    {flag}
+                  <div
+                    key={flag}
+                    className={`rounded-[20px] border p-4 text-sm font-medium flex items-start gap-2.5 ${
+                      transfer.geminiSummary?.riskLevel === "HIGH"
+                        ? "border-red-200 bg-red-50 text-red-800"
+                        : "border-amber-200 bg-amber-50 text-amber-800"
+                    }`}
+                  >
+                    <span className="text-base">⚠️</span>
+                    <span>{flag}</span>
                   </div>
                 ))
               ) : (
