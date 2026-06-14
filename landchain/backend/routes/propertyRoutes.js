@@ -7,128 +7,155 @@ const BlockchainNode = require("../models/BlockchainNode");
 const { createGenesisNode, getChain, createSplitGenesisNode, getOwnershipHistory, getUlpinVariants } = require("../services/blockchainService");
 const { analyzeProperty } = require("../services/geminiService");
 
+const StateRevenue = require("../models/StateRevenue");
+const SubRegistrar = require("../models/SubRegistrar");
+const PanchayatTax = require("../models/PanchayatTax");
+const CourtRecord = require("../models/CourtRecord");
+
 const router = express.Router();
 
-function getRevenueDept(ulpin) {
+async function getRevenueDept(ulpin) {
   const normalizedUlpin = String(ulpin || "").toUpperCase().trim();
-  const data = {
-    ownerName: "Ramesh Kumar",
-    surveyNumber: "142/3B",
-    area: "2.4 acres",
-    landType: "Agricultural",
-    village: "Hosahalli",
-    taluk: "Mangaluru",
-    district: "Dakshina Kannada",
-    state: "Karnataka",
-    previousOwners: [],
-    taxStatus: "Paid up to 2024-25",
-    ulpin: normalizedUlpin,
-  };
+  const variants = getUlpinVariants(normalizedUlpin);
 
-  const parts = normalizedUlpin.split("-");
-  if (parts.length >= 3) {
-    data.surveyNumber = parts.slice(2).join("/");
+  const dbRecord = await StateRevenue.findOne({ ulpin: { $in: variants } });
+  let data;
+  if (dbRecord) {
+    data = dbRecord.toObject();
+  } else {
+    data = {
+      ownerName: "Ramesh Kumar",
+      surveyNumber: "142/3B",
+      area: "2.4 acres",
+      landType: "Agricultural",
+      village: "Hosahalli",
+      taluk: "Mangaluru",
+      district: "Dakshina Kannada",
+      state: "Karnataka",
+      previousOwners: [],
+      taxStatus: "Paid up to 2024-25",
+      ulpin: normalizedUlpin,
+    };
+
+    const parts = normalizedUlpin.split("-");
+    if (parts.length >= 3) {
+      data.surveyNumber = parts.slice(2).join("/");
+    }
+
+    // Set owner name and previousOwners defaults based on ULPIN ranges
+    if (normalizedUlpin.startsWith("KA-MNG-21") || normalizedUlpin.includes("201") || normalizedUlpin.includes("202") || normalizedUlpin.includes("203")) {
+      data.ownerName = "Suresh Patil";
+    } else if (normalizedUlpin.startsWith("KA-MNG-31") || normalizedUlpin.includes("301") || normalizedUlpin.includes("302") || normalizedUlpin.includes("303")) {
+      data.ownerName = "Deepak Gowda";
+    }
+
+    // Pre-seed some area defaults
+    if (normalizedUlpin === "KA-MNG-142-3B") {
+      data.area = "2.4 acres";
+    } else if (normalizedUlpin === "KA-MNG-111-DIV1") {
+      data.area = "2.0 acres";
+    } else if (normalizedUlpin === "KA-MNG-112-DIV2") {
+      data.area = "3.0 acres";
+    } else if (normalizedUlpin === "KA-MNG-211-DIV1") {
+      data.area = "4.0 acres";
+    } else if (normalizedUlpin === "KA-MNG-212-DIV2") {
+      data.area = "2.4 acres";
+    } else if (normalizedUlpin === "KA-MNG-311-DIV1") {
+      data.area = "1.6 acres";
+    } else if (normalizedUlpin === "KA-MNG-312-DIV2") {
+      data.area = "5.0 acres";
+    } else if (normalizedUlpin === "KA-MNG-313-DIV3") {
+      data.area = "3.0 acres";
+    } else if (normalizedUlpin === "KA-MNG-101-R1") {
+      data.area = "1.5 acres";
+    } else if (normalizedUlpin === "KA-MNG-102-R2") {
+      data.area = "0.8 acres";
+      data.landType = "Residential";
+    } else if (normalizedUlpin === "KA-MNG-103-R3") {
+      data.area = "2.0 acres";
+      data.landType = "Commercial";
+    } else if (normalizedUlpin === "KA-MNG-201-S1") {
+      data.area = "3.0 acres";
+    } else if (normalizedUlpin === "KA-MNG-202-S2") {
+      data.area = "1.1 acres";
+      data.landType = "Residential";
+    } else if (normalizedUlpin === "KA-MNG-203-S3") {
+      data.area = "0.5 acres";
+      data.landType = "Residential";
+    } else if (normalizedUlpin === "KA-MNG-301-D1") {
+      data.area = "2.2 acres";
+    } else if (normalizedUlpin === "KA-MNG-302-D2") {
+      data.area = "0.7 acres";
+      data.landType = "Residential";
+    } else if (normalizedUlpin === "KA-MNG-303-D3") {
+      data.area = "1.8 acres";
+    } else if (normalizedUlpin.includes("/")) {
+      data.area = "1.0 acres";
+    }
+
+    // Setup divisions list if divisible
+    if (normalizedUlpin === "KA-MNG-142-3B") {
+      data.divisions = [
+        { ulpin: `${normalizedUlpin}/A`, area: "1.2 acres" },
+        { ulpin: `${normalizedUlpin}/B`, area: "1.2 acres" },
+      ];
+    } else if (normalizedUlpin === "KA-MNG-111-DIV1") {
+      data.divisions = [
+        { ulpin: `${normalizedUlpin}/A`, area: "1.0 acres" },
+        { ulpin: `${normalizedUlpin}/B`, area: "1.0 acres" },
+      ];
+    } else if (normalizedUlpin === "KA-MNG-112-DIV2") {
+      data.divisions = [
+        { ulpin: `${normalizedUlpin}/A`, area: "1.5 acres" },
+        { ulpin: `${normalizedUlpin}/B`, area: "1.5 acres" },
+      ];
+    } else if (normalizedUlpin === "KA-MNG-211-DIV1") {
+      data.divisions = [
+        { ulpin: `${normalizedUlpin}/A`, area: "2.0 acres" },
+        { ulpin: `${normalizedUlpin}/B`, area: "2.0 acres" },
+      ];
+    } else if (normalizedUlpin === "KA-MNG-212-DIV2") {
+      data.divisions = [
+        { ulpin: `${normalizedUlpin}/A`, area: "1.2 acres" },
+        { ulpin: `${normalizedUlpin}/B`, area: "1.2 acres" },
+      ];
+    } else if (normalizedUlpin === "KA-MNG-311-DIV1") {
+      data.divisions = [
+        { ulpin: `${normalizedUlpin}/A`, area: "0.8 acres" },
+        { ulpin: `${normalizedUlpin}/B`, area: "0.8 acres" },
+      ];
+    } else if (normalizedUlpin === "KA-MNG-312-DIV2") {
+      data.divisions = [
+        { ulpin: `${normalizedUlpin}/A`, area: "2.5 acres" },
+        { ulpin: `${normalizedUlpin}/B`, area: "2.5 acres" },
+      ];
+    } else if (normalizedUlpin === "KA-MNG-313-DIV3") {
+      data.divisions = [
+        { ulpin: `${normalizedUlpin}/A`, area: "1.0 acres" },
+        { ulpin: `${normalizedUlpin}/B`, area: "1.0 acres" },
+        { ulpin: `${normalizedUlpin}/C`, area: "1.0 acres" },
+      ];
+    }
   }
 
-  // Set owner name and previousOwners defaults based on ULPIN ranges
-  if (normalizedUlpin.startsWith("KA-MNG-21") || normalizedUlpin.includes("201") || normalizedUlpin.includes("202") || normalizedUlpin.includes("203")) {
-    data.ownerName = "Suresh Patil";
-  } else if (normalizedUlpin.startsWith("KA-MNG-31") || normalizedUlpin.includes("301") || normalizedUlpin.includes("302") || normalizedUlpin.includes("303")) {
-    data.ownerName = "Deepak Gowda";
-  }
-
-  // Pre-seed some area defaults
-  if (normalizedUlpin === "KA-MNG-142-3B") {
-    data.area = "2.4 acres";
-  } else if (normalizedUlpin === "KA-MNG-111-DIV1") {
-    data.area = "2.0 acres";
-  } else if (normalizedUlpin === "KA-MNG-112-DIV2") {
-    data.area = "3.0 acres";
-  } else if (normalizedUlpin === "KA-MNG-211-DIV1") {
-    data.area = "4.0 acres";
-  } else if (normalizedUlpin === "KA-MNG-212-DIV2") {
-    data.area = "2.4 acres";
-  } else if (normalizedUlpin === "KA-MNG-311-DIV1") {
-    data.area = "1.6 acres";
-  } else if (normalizedUlpin === "KA-MNG-312-DIV2") {
-    data.area = "5.0 acres";
-  } else if (normalizedUlpin === "KA-MNG-313-DIV3") {
-    data.area = "3.0 acres";
-  } else if (normalizedUlpin === "KA-MNG-101-R1") {
-    data.area = "1.5 acres";
-  } else if (normalizedUlpin === "KA-MNG-102-R2") {
-    data.area = "0.8 acres";
-    data.landType = "Residential";
-  } else if (normalizedUlpin === "KA-MNG-103-R3") {
-    data.area = "2.0 acres";
-    data.landType = "Commercial";
-  } else if (normalizedUlpin === "KA-MNG-201-S1") {
-    data.area = "3.0 acres";
-  } else if (normalizedUlpin === "KA-MNG-202-S2") {
-    data.area = "1.1 acres";
-    data.landType = "Residential";
-  } else if (normalizedUlpin === "KA-MNG-203-S3") {
-    data.area = "0.5 acres";
-    data.landType = "Residential";
-  } else if (normalizedUlpin === "KA-MNG-301-D1") {
-    data.area = "2.2 acres";
-  } else if (normalizedUlpin === "KA-MNG-302-D2") {
-    data.area = "0.7 acres";
-    data.landType = "Residential";
-  } else if (normalizedUlpin === "KA-MNG-303-D3") {
-    data.area = "1.8 acres";
-  } else if (normalizedUlpin.includes("/")) {
-    data.area = "1.0 acres";
-  }
-
-  // Setup divisions list if divisible
-  if (normalizedUlpin === "KA-MNG-142-3B") {
-    data.divisions = [
-      { ulpin: `${normalizedUlpin}/A`, area: "1.2 acres" },
-      { ulpin: `${normalizedUlpin}/B`, area: "1.2 acres" },
-    ];
-  } else if (normalizedUlpin === "KA-MNG-111-DIV1") {
-    data.divisions = [
-      { ulpin: `${normalizedUlpin}/A`, area: "1.0 acres" },
-      { ulpin: `${normalizedUlpin}/B`, area: "1.0 acres" },
-    ];
-  } else if (normalizedUlpin === "KA-MNG-112-DIV2") {
-    data.divisions = [
-      { ulpin: `${normalizedUlpin}/A`, area: "1.5 acres" },
-      { ulpin: `${normalizedUlpin}/B`, area: "1.5 acres" },
-    ];
-  } else if (normalizedUlpin === "KA-MNG-211-DIV1") {
-    data.divisions = [
-      { ulpin: `${normalizedUlpin}/A`, area: "2.0 acres" },
-      { ulpin: `${normalizedUlpin}/B`, area: "2.0 acres" },
-    ];
-  } else if (normalizedUlpin === "KA-MNG-212-DIV2") {
-    data.divisions = [
-      { ulpin: `${normalizedUlpin}/A`, area: "1.2 acres" },
-      { ulpin: `${normalizedUlpin}/B`, area: "1.2 acres" },
-    ];
-  } else if (normalizedUlpin === "KA-MNG-311-DIV1") {
-    data.divisions = [
-      { ulpin: `${normalizedUlpin}/A`, area: "0.8 acres" },
-      { ulpin: `${normalizedUlpin}/B`, area: "0.8 acres" },
-    ];
-  } else if (normalizedUlpin === "KA-MNG-312-DIV2") {
-    data.divisions = [
-      { ulpin: `${normalizedUlpin}/A`, area: "2.5 acres" },
-      { ulpin: `${normalizedUlpin}/B`, area: "2.5 acres" },
-    ];
-  } else if (normalizedUlpin === "KA-MNG-313-DIV3") {
-    data.divisions = [
-      { ulpin: `${normalizedUlpin}/A`, area: "1.0 acres" },
-      { ulpin: `${normalizedUlpin}/B`, area: "1.0 acres" },
-      { ulpin: `${normalizedUlpin}/C`, area: "1.0 acres" },
-    ];
+  // Inject taxStatus from PanchayatTax DB if found
+  const taxRecord = await PanchayatTax.findOne({ ulpin: { $in: variants } });
+  if (taxRecord) {
+    data.taxStatus = taxRecord.taxStatus;
   }
 
   return data;
 }
 
-function getKaveriData() {
+async function getKaveriData(ulpin) {
+  const normalizedUlpin = String(ulpin || "").toUpperCase().trim();
+  const variants = getUlpinVariants(normalizedUlpin);
+
+  const dbRecord = await SubRegistrar.findOne({ ulpin: { $in: variants } });
+  if (dbRecord) {
+    return dbRecord.toObject();
+  }
+
   return {
     registrationHistory: [],
     encumbrances: "None",
@@ -136,7 +163,15 @@ function getKaveriData() {
   };
 }
 
-function getCourtRecords() {
+async function getCourtRecords(ulpin) {
+  const normalizedUlpin = String(ulpin || "").toUpperCase().trim();
+  const variants = getUlpinVariants(normalizedUlpin);
+
+  const dbRecord = await CourtRecord.findOne({ ulpin: { $in: variants } });
+  if (dbRecord) {
+    return dbRecord.toObject();
+  }
+
   return {
     litigationStatus: "Clear",
     pendingCases: [],
@@ -159,6 +194,11 @@ async function ensurePropertyRecord({ ulpin, requesterUserId, revenueData }) {
   const chain = await getChain(ulpin);
 
   if (!property && requesterUserId) {
+    const taxDbRecord = await PanchayatTax.findOne({ ulpin: { $in: variants } });
+    const taxRecords = taxDbRecord && taxDbRecord.taxRecords && taxDbRecord.taxRecords.length
+      ? taxDbRecord.taxRecords.map(t => ({ year: t.year, amount: t.amount, status: t.status }))
+      : getDefaultTaxRecords();
+
     property = await Property.create({
       ulpin,
       ownerUserId: requesterUserId,
@@ -168,7 +208,7 @@ async function ensurePropertyRecord({ ulpin, requesterUserId, revenueData }) {
       village: revenueData.village,
       taluk: revenueData.taluk,
       district: revenueData.district,
-      taxRecords: getDefaultTaxRecords(),
+      taxRecords: taxRecords,
     });
   }
 
@@ -195,9 +235,9 @@ router.post("/fetch", async (req, res) => {
   try {
     const { ulpin, requesterUserId } = req.body;
 
-    const revenueData = getRevenueDept(ulpin);
-    const kaveriData = getKaveriData(ulpin);
-    const courtData = getCourtRecords(ulpin);
+    const revenueData = await getRevenueDept(ulpin);
+    const kaveriData = await getKaveriData(ulpin);
+    const courtData = await getCourtRecords(ulpin);
     const propertyRecord = await ensurePropertyRecord({
       ulpin,
       requesterUserId,
@@ -205,7 +245,7 @@ router.post("/fetch", async (req, res) => {
     });
 
     const { registrationHistory, previousOwners } = await getOwnershipHistory(ulpin);
-    kaveriData.registrationHistory = registrationHistory;
+    kaveriData.registrationHistory = [...(kaveriData.registrationHistory || []), ...registrationHistory];
     revenueData.previousOwners = previousOwners;
 
     // Set dynamic owner name in revenueData based on propertyRecord
@@ -233,11 +273,20 @@ router.post("/fetch", async (req, res) => {
 
 router.post("/analyze", async (req, res) => {
   try {
-    const { combinedData } = req.body;
+    const { ulpin, combinedData } = req.body;
     const geminiSummary = await analyzeProperty(combinedData);
+
+    const targetUlpin = ulpin || (combinedData && (combinedData.ulpin || (combinedData.revenueData && combinedData.revenueData.ulpin)));
+    if (targetUlpin && geminiSummary) {
+      const history = await getOwnershipHistory(targetUlpin);
+      if (history && history.previousOwners) {
+        geminiSummary.previousOwners = history.previousOwners;
+      }
+    }
 
     return res.json({ geminiSummary });
   } catch (error) {
+    console.error("[LandChain] Error in /analyze route:", error);
     return res.status(500).json({ error: "Failed to analyze property records" });
   }
 });
@@ -320,7 +369,7 @@ router.post("/split-request", async (req, res) => {
       return res.status(404).json({ error: "Parent property not found" });
     }
 
-    const officialData = getRevenueDept(parentUlpin);
+    const officialData = await getRevenueDept(parentUlpin);
     if (!officialData.divisions || officialData.divisions.length < 2) {
       return res.status(400).json({ error: "This property does not have approved divisions in the government registry." });
     }
@@ -349,6 +398,8 @@ router.post("/split-request", async (req, res) => {
       const latestParentBlock = await BlockchainNode.findOne({ ulpin: parentUlpin }).sort({ timestamp: -1 });
       const parentNodeId = latestParentBlock ? latestParentBlock.nodeId : null;
 
+      const createdTransfers = [];
+
       for (const child of splits) {
         // Create child property
         await Property.create({
@@ -373,6 +424,55 @@ router.post("/split-request", async (req, res) => {
         const sellerUser = await User.findOne({ userId: prop.ownerUserId });
         const buyerUser = await User.findOne({ userId: child.targetBuyerUserId });
 
+        // Create government source records for split child properties
+        await StateRevenue.create({
+          ulpin: child.ulpin,
+          surveyNumber: child.ulpin.split("-").slice(2).join("/"),
+          area: child.area,
+          landType: prop.type,
+          village: prop.village,
+          taluk: prop.taluk,
+          district: prop.district,
+          state: officialData.state || "Karnataka",
+          divisions: [],
+        });
+
+        await SubRegistrar.create({
+          ulpin: child.ulpin,
+          encumbrances: "None",
+          mortgageStatus: "Clear",
+          registrationHistory: [
+            {
+              date: new Date().toLocaleDateString("en-GB"),
+              deedNumber: `SPLIT-${Math.floor(100000 + Math.random() * 900000)}`,
+              volume: "IV",
+              page: "1",
+              transactionType: "Partition",
+              seller: sellerUser ? sellerUser.name : "Government",
+              buyer: sellerUser ? sellerUser.name : prop.ownerUserId,
+              considerationAmount: 0
+            }
+          ]
+        });
+
+        await PanchayatTax.create({
+          ulpin: child.ulpin,
+          taxStatus: "Paid",
+          taxRecords: [
+            { year: new Date().getFullYear(), amount: 1000, status: "Paid" }
+          ]
+        });
+
+        await CourtRecord.create({
+          ulpin: child.ulpin,
+          litigationStatus: "Clear",
+          pendingCases: [],
+          attachmentOrders: "None",
+          courtVerifiedOn: new Date().toLocaleDateString("en-GB")
+        });
+
+        const { previousOwners } = await getOwnershipHistory(child.ulpin);
+
         // Automatically create the Transfer agreement in SENT state (pre-signed by seller)
         const transfer = await Transfer.create({
           sellerUserId: prop.ownerUserId,
@@ -392,7 +492,8 @@ router.post("/split-request", async (req, res) => {
             },
             riskLevel: "LOW",
             taxStatus: "Paid",
-            flags: []
+            flags: [],
+            previousOwners: previousOwners || []
           },
           flags: [],
           status: "SENT",
@@ -405,6 +506,8 @@ router.post("/split-request", async (req, res) => {
             timestamp: null,
           }
         });
+
+        createdTransfers.push(transfer);
 
         // Notify the buyer
         await Notification.create({
@@ -424,7 +527,7 @@ router.post("/split-request", async (req, res) => {
         message: `ULPIN ${parentUlpin} has been successfully divided into: ${splits.map((s) => s.ulpin).join(", ")}.`,
       });
 
-      return res.json({ status: "success", message: "Property split complete." });
+      return res.json({ status: "success", message: "Property split complete.", transfers: createdTransfers });
     } catch (err) {
       console.error("Property split error:", err);
       return res.status(500).json({ error: "Failed to split property" });

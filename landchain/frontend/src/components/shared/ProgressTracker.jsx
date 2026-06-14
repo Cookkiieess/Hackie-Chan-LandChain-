@@ -16,6 +16,7 @@ const statusToStep = {
   DRAFT: 1,
   SENT: 2,
   BUYER_SIGNED: 3,
+  BUYER_DECLINED: 2,
   REGISTRAR_REVIEW: 4,
   REGISTRAR_APPROVED: 5,
   REGISTRAR_DECLINED: 5,
@@ -36,6 +37,7 @@ function formatCurrency(amount) {
 
 export default function ProgressTracker({ transfer }) {
   const activeStep = statusToStep[transfer.status] || 1;
+  const isBuyerDeclined = transfer.status === "BUYER_DECLINED";
   const isRegistrarDeclined = transfer.status === "REGISTRAR_DECLINED";
   const isPanchayatDeclined = transfer.status === "PANCHAYAT_DECLINED";
   const isCompletedTransfer = transfer.status === "COMPLETED";
@@ -64,10 +66,13 @@ export default function ProgressTracker({ transfer }) {
           {steps.map((label, index) => {
             const stepNumber = index + 1;
             const completed =
-              (stepNumber < activeStep && !isRegistrarDeclined && !isPanchayatDeclined) ||
+              (stepNumber < activeStep && !isBuyerDeclined && !isRegistrarDeclined && !isPanchayatDeclined) ||
               (isCompletedTransfer && stepNumber === steps.length);
             const active = stepNumber === activeStep && !isCompletedTransfer;
-            const declined = (isRegistrarDeclined && stepNumber === 5) || (isPanchayatDeclined && stepNumber === 7);
+            const declined =
+              (isBuyerDeclined && stepNumber === 2) ||
+              (isRegistrarDeclined && stepNumber === 5) ||
+              (isPanchayatDeclined && stepNumber === 7);
 
             return (
               <div key={label} className="flex flex-1 items-start">
@@ -119,6 +124,17 @@ export default function ProgressTracker({ transfer }) {
           />
         </div>
       </div>
+
+      {transfer.status === "BUYER_DECLINED" ? (
+        <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4">
+          <p className="text-sm font-semibold text-red-800 flex items-center gap-2">
+            <X className="h-4 w-4" /> Declined by Buyer
+          </p>
+          <p className="mt-2 text-sm text-red-700">
+            <strong>Reason:</strong> {transfer.declineReason || "Declined by buyer due to validation verification check."}
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }

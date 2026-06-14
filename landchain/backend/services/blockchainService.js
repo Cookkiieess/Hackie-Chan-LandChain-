@@ -1,6 +1,7 @@
 const BlockchainNode = require("../models/BlockchainNode");
 const User = require("../models/User");
 const Transfer = require("../models/Transfer");
+const SubRegistrar = require("../models/SubRegistrar");
 const { computeHash } = require("../security/hashService");
 const integrityChecker = require("../security/integrityChecker");
 
@@ -157,6 +158,29 @@ async function getOwnershipHistory(ulpin) {
   userMap["GOVERNMENT"] = "Government";
   userMap["Government"] = "Government";
 
+  const variants = getUlpinVariants(ulpin);
+  const subRegDoc = await SubRegistrar.findOne({ ulpin: { $in: variants } });
+  
+  let initialAcquisitionYear = null;
+  if (subRegDoc && subRegDoc.registrationHistory && subRegDoc.registrationHistory.length > 0) {
+    const firstDeed = subRegDoc.registrationHistory[0];
+    if (firstDeed.date) {
+      const parts = firstDeed.date.split(/[-/]/);
+      if (parts.length === 3) {
+        const yearPart = parts[2].length === 4 ? parts[2] : parts[0];
+        initialAcquisitionYear = parseInt(yearPart, 10);
+      }
+    }
+  }
+
+  if (!initialAcquisitionYear) {
+    if (chain.length > 0) {
+      initialAcquisitionYear = new Date(chain[0].timestamp).getFullYear() - 5;
+    } else {
+      initialAcquisitionYear = 2021;
+    }
+  }
+
   const registrationHistory = [];
   const previousOwners = [];
 
@@ -170,42 +194,50 @@ async function getOwnershipHistory(ulpin) {
     }
     const buyerName = userMap[node.COID] || node.COID;
 
-    // Determine the deed type and transaction value
-    let value = "0";
-    let type = "Gift Deed";
-    if (node.transferId) {
-      type = "Sale Deed (Digital)";
-      const transferDoc = await Transfer.findOne({ transferId: node.transferId });
-      if (transferDoc) {
-        value = new Intl.NumberFormat("en-IN").format(transferDoc.price);
+    // Only add subsequent transfers to registrationHistory (genesis block is already in SubRegistrar seed)
+    if (i > 0) {
+      let value = "0";
+      let type = "Gift Deed";
+      if (node.transferId) {
+        type = "Sale Deed (Digital)";
+        const transferDoc = await Transfer.findOne({ transferId: node.transferId });
+        if (transferDoc) {
+          value = new Intl.NumberFormat("en-IN").format(transferDoc.price);
+        } else {
+          value = "Market Value";
+        }
       } else {
+        type = "Sale Deed";
         value = "Market Value";
       }
-    } else if (i > 0) {
-      type = "Sale Deed";
-      value = "Market Value";
+
+      registrationHistory.unshift({
+        year,
+        type,
+        parties: `${sellerName} to ${buyerName}`,
+        value,
+      });
     }
 
-    // Add to Kaveri registration history (newest first)
-    registrationHistory.unshift({
-      year,
-      type,
-      parties: `${sellerName} to ${buyerName}`,
-      value,
-    });
-
-    // Populate previousOwners dynamically (chronologically)
+    // Populate previousOwners dynamically
     if (i === 0) {
-      const prevYear = year - 5;
-      previousOwners.push(`${sellerName} (${prevYear}-${year})`);
-    }
-
-    if (i === chain.length - 1) {
-      previousOwners.push(`${buyerName} (${year}-present)`);
+      previousOwners.push(`Government (2016-${initialAcquisitionYear})`);
+      
+      if (chain.length === 1) {
+        previousOwners.push(`${buyerName} (${initialAcquisitionYear}-present)`);
+      } else {
+        const nextNode = chain[1];
+        const nextYear = new Date(nextNode.timestamp).getFullYear();
+        previousOwners.push(`${buyerName} (${initialAcquisitionYear}-${nextYear})`);
+      }
     } else {
-      const nextNode = chain[i + 1];
-      const nextYear = new Date(nextNode.timestamp).getFullYear();
-      previousOwners.push(`${buyerName} (${year}-${nextYear})`);
+      if (i === chain.length - 1) {
+        previousOwners.push(`${buyerName} (${year}-present)`);
+      } else {
+        const nextNode = chain[i + 1];
+        const nextYear = new Date(nextNode.timestamp).getFullYear();
+        previousOwners.push(`${buyerName} (${year}-${nextYear})`);
+      }
     }
   }
 

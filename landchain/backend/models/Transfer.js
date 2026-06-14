@@ -87,6 +87,7 @@ const transferSchema = new mongoose.Schema({
       "DRAFT",
       "SENT",
       "BUYER_SIGNED",
+      "BUYER_DECLINED",
       "REGISTRAR_REVIEW",
       "REGISTRAR_APPROVED",
       "REGISTRAR_DECLINED",
@@ -97,6 +98,11 @@ const transferSchema = new mongoose.Schema({
       "COMPLETED",
     ],
     default: "DRAFT",
+  },
+  declineReason: {
+    type: String,
+    default: "",
+    trim: true,
   },
   sellerSignature: {
     type: signatureSchema,

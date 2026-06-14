@@ -65,6 +65,11 @@ taxStatus (string),
 riskLevel (string: LOW or MEDIUM or HIGH),
 flags (array of strings, each a specific concern),
 landDetails (object with: area, type, location, surveyNumber)
+
+CRITICAL INSTRUCTIONS:
+1. The initial transfer of land from the Government ('Gov' or 'Government') to the first private owner is often executed as a 'Gift Deed' or 'Government Grant'. Do NOT flag this initial gift deed or grant from the Government as a risk, discrepancy, concern, or warning. It is a standard government allocation.
+2. Only flag actual risks like active court litigations, pending injunctions, unpaid taxes, or active bank mortgages.
+
 Return ONLY valid JSON, no markdown, no explanation.
 Data: ${JSON.stringify(combinedData)}`;
 
